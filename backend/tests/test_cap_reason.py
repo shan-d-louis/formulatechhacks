@@ -13,7 +13,7 @@ import features
 import health
 import main
 from state import TireState
-from tests.test_passthrough import RAW
+from backend.tests.test_passthrough import RAW
 
 WORN_AGE, WORN_LAPS_LEFT = 30.0, 6.4  # wear component ~18: by far the lowest score
 

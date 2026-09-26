@@ -189,6 +189,17 @@ def _stub_estimate(compound: str, tire_age_laps: float) -> dict:
     }
 
 
+def _apply_life_prior(pred: dict, compound: str, tire_age_laps: float) -> dict:
+    """Keep model output inside the documented per-compound stint horizon."""
+    prior = _stub_estimate(compound, tire_age_laps)
+    low = min(float(pred["low"]), prior["low"])
+    mid = min(float(pred["mid"]), prior["mid"])
+    high = min(float(pred["high"]), prior["high"])
+    mid = max(low, mid)
+    high = max(mid, high)
+    return {"low": round(low, 1), "mid": round(mid, 1), "high": round(high, 1)}
+
+
 def _compound_rank(compound: str) -> float:
     """Map backend dry compounds onto the Tier B relative-compound rank."""
     ranks = {"SOFT": 0.0, "MEDIUM": 1.0, "HARD": 2.0}
@@ -238,7 +249,11 @@ def _predict_tierb(compound: str, tire_age_laps: float, track_temp_c: float) -> 
     mid = float(pred["median_laps"])
     horizon = float(_tierb_bundle.get("max_horizon", config.MAX_FORECAST_LAPS))
     high = min(horizon, max(mid, low) + max(3.0, 0.25 * max(mid, low)))
-    return {"low": round(low, 1), "mid": round(mid, 1), "high": round(high, 1)}
+    return _apply_life_prior(
+        {"low": round(low, 1), "mid": round(mid, 1), "high": round(high, 1)},
+        compound,
+        tire_age_laps,
+    )
 
 
 @lru_cache(maxsize=512)

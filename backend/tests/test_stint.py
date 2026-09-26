@@ -12,7 +12,7 @@ import config
 import features
 import main
 from state import SlipEvent
-from tests.test_passthrough import RAW
+from backend.tests.test_passthrough import RAW
 
 
 @pytest.fixture(autouse=True)

@@ -13,7 +13,7 @@ import config
 import features
 import main
 from state import TireState, new_tire_states
-from tests.test_passthrough import RAW
+from backend.tests.test_passthrough import RAW
 
 
 # ---------- slip ratio ----------

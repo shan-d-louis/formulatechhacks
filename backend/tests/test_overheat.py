@@ -15,7 +15,7 @@ import detectors
 import features
 import main
 from state import TireState
-from tests.test_passthrough import RAW
+from backend.tests.test_passthrough import RAW
 
 DT = config.DT
 

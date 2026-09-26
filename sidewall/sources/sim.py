@@ -38,10 +38,41 @@ GEAR_RATIO = [None] + [12000 * R_WHEEL / (v / 3.6 * 60 / (2 * np.pi))
                        for v in (85, 115, 145, 175, 205, 240, 275, 340)]
 
 
+def _synthetic_track_profile() -> dict:
+    """Deterministic fallback profile for tests and demos without local FastF1 parquet data."""
+    length = 5200.0
+    grid = np.arange(0, length, 1.0)
+    theta = 2 * np.pi * grid / length
+    radius = length / (2 * np.pi)
+    x = radius * np.cos(theta)
+    y = 0.62 * radius * np.sin(theta) + 65.0 * np.sin(3 * theta)
+    dx, dy = np.gradient(x), np.gradient(y)
+    ddx, ddy = np.gradient(dx), np.gradient(dy)
+    kappa = (dx * ddy - dy * ddx) / np.power(dx * dx + dy * dy, 1.5)
+    kappa = 2.8 * savgol_filter(kappa, 31, 2, mode="wrap")
+    corner = np.clip(np.abs(kappa) / np.percentile(np.abs(kappa), 96), 0.0, 1.0)
+    v_ref = (110.0 - 55.0 * corner) * (1.0 + 0.05 * np.sin(5 * theta))
+    return {
+        "s": grid,
+        "x": x,
+        "y": y,
+        "v_ref": np.maximum(v_ref, 22.0),
+        "kappa": kappa,
+        "length": grid[-1],
+        "lap_ref_s": 95.0,
+        "circuit": "Synthetic demo track",
+    }
+
+
 def track_profile(year: int = 2020, rnd: int = 4, driver_number: str = "44") -> dict:
     """Racing line and reference speed of one fast lap, resampled every metre."""
-    tel = pd.read_parquet(config.TELEM_DIR / f"{year}_{rnd:02d}.parquet")
-    laps = pd.read_parquet(config.LAPS_DIR / f"{year}_{rnd:02d}.parquet")
+    tel_path = config.TELEM_DIR / f"{year}_{rnd:02d}.parquet"
+    laps_path = config.LAPS_DIR / f"{year}_{rnd:02d}.parquet"
+    if not tel_path.exists() or not laps_path.exists():
+        return _synthetic_track_profile()
+
+    tel = pd.read_parquet(tel_path)
+    laps = pd.read_parquet(laps_path)
     L = laps[(laps["driver_number"].astype(str) == driver_number) & laps["lap_time_s"].notna()
              & ~laps["pit_in"] & ~laps["pit_out"] & (laps["lap"] > 1)]
     best = L.loc[L["lap_time_s"].idxmin()]

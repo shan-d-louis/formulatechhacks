@@ -14,7 +14,7 @@ import detectors
 import features
 import main
 from state import TireState
-from tests.test_passthrough import RAW
+from backend.tests.test_passthrough import RAW
 
 DT = config.DT
 NORMAL_LOW = config.PRESSURE_NOMINAL_PSI - config.PRESSURE_ABS_DEADBAND  # 19.9 psi
