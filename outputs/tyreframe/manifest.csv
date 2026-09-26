@@ -1,0 +1,13 @@
+record_type,name,rows,sample_level,notes
+source_table,fastf1,70801,,raw extracted/source rows before TyreFrame normalization
+source_table,openf1,123156,,raw extracted/source rows before TyreFrame normalization
+source_table,stints,1010,,raw extracted/source rows before TyreFrame normalization
+source_table,candidate_events,5,,raw extracted/source rows before TyreFrame normalization
+source_table,event_windows,1334,,raw extracted/source rows before TyreFrame normalization
+output_table,macro_telemetry,193957,macro_telemetry,normalized TyreFrame table
+output_table,macro_laps,210,macro_lap,normalized TyreFrame table
+output_table,stints,1010,stint,normalized TyreFrame table
+output_table,candidate_events,5,event,normalized TyreFrame table
+output_table,micro_event_windows,1334,event_window,normalized TyreFrame table
+total,source_records,196306,,sum of raw extracted/source rows
+total,output_records,196516,,sum of normalized output rows across hierarchical tables

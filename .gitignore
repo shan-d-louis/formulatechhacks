@@ -1,9 +1,13 @@
 .venv/
 **/__pycache__/
-.fastf1_cache/
 *.pyc
+data/raw/
+data/cache/
+data/processed/
+models/weights/*.joblib
+data/*.log
+.fastf1_cache/
 .pytest_cache/
-venv/
 training/cache/
 
 # Local assistant instructions and tool settings (kept out of the repo)

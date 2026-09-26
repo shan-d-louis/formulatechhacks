@@ -64,6 +64,12 @@ README, agent skill, schema/config example, or coverage note in the same pass.
   context. Standard FastF1 telemetry includes speed, throttle, brake, RPM, gear,
   position, and session/lap metadata, but not per-wheel rotation speed, actual fuel
   mass, tyre pressure, or tyre temperature.
+- **Kaggle F1 tyre strategy datasets**: Community F1 strategy-engine exports, such as
+  datasets found by searching Kaggle for `F1-Tyre-Strategy-Engine`, can provide
+  tabular stint summaries with `Compound`, `StintLength`, aggregated `AirTemp`, and
+  aggregated `TrackTemp` for ML experiments. Known useful targets include
+  `navenkumar1998/formula-1-dataset-with-weather-and-tyre-features` as the primary
+  tyre/weather target.
 - **Race-control and status data**: Useful for failure labels such as tyre, puncture,
   wheel, or wheel nut events.
 - **Sim racing or academic telemetry**: Prefer these for per-wheel slip, tyre

@@ -16,9 +16,16 @@ Ingest datasets from the following sources:
   - `RPM` & `Gear`: Useful for tracking engine load and acceleration phase efficiency.
   - `TrackTemp` & `AirTemp`: Essential ambient contexts that dictate how quickly tires heat up and degrade.
   - Treat tyre pressure, tyre temperature, individual wheel speed, and actual fuel mass as unavailable unless another source supplies them directly.
-2. **Sim Racing Telemetry Datasets (Assetto Corsa / iRacing)**:
+2. **Kaggle F1 Tyre Strategy Datasets**
+  - Search Kaggle for `F1-Tyre-Strategy-Engine` style community datasets.
+  - Extract `Compound`, `StintLength`, aggregated `AirTemp`, and aggregated `TrackTemp`.
+  - Prefer `navenkumar1998/formula-1-dataset-with-weather-and-tyre-features` for
+    lap-level tyre/weather modelling.
+  - Treat these as tabular stint summaries for ML experiments, not direct tyre pressure,
+    tyre temperature, wheel-speed, or safety-failure ground truth.
+3. **Sim Racing Telemetry Datasets (Assetto Corsa / iRacing)**:
   - Prefer these for per-wheel slip, tyre temperature, tyre pressure, and wear ground truth when validating detectors or the digital twin.
-3. **Academic Datasets**: Politecnico di Torino's open automotive datasets
+4. **Academic Datasets**: Politecnico di Torino's open automotive datasets
 
 ## Data Contracts and Documentation
 - Document each source adapter's measured fields, estimated fields, unavailable fields, sampling rate, and units.

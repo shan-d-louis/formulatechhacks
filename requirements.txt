@@ -1,3 +1,17 @@
+fastf1>=3.4
+pandas>=2.2
+numpy>=1.26
+scipy>=1.13
+pyarrow>=16
+scikit-learn>=1.5
+lightgbm>=4.3
+scikit-survival>=0.23
+joblib>=1.4
+requests>=2.32
+huggingface_hub>=0.24
+fastapi>=0.111
+uvicorn[standard]>=0.30
+qrcode>=7.4
 fastapi
 uvicorn[standard]
 numpy
