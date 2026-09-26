@@ -5,3 +5,11 @@
 .pytest_cache/
 venv/
 training/cache/
+
+# Local assistant instructions and tool settings (kept out of the repo)
+CLAUDE.md
+.claude/
+.env
+
+# Large or rebuildable training data (rebuild with training/fetch.py + prepare.py)
+training/data/

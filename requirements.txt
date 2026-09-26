@@ -8,3 +8,5 @@ joblib
 fastf1
 pytest
 httpx
+pyarrow
+matplotlib
