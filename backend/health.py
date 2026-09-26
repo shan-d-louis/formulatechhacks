@@ -100,6 +100,7 @@ def tire_health(st: TireState, temp_c: float, pressure_psi: float, residual: flo
     cause = cap_cause(st.overheat, st.pressure)
     thi = apply_critical_cap(combine(components), st.overheat, st.pressure)
     st.status = next_status(st.status, thi)
+    st.residual, st.capped = residual, cause is not None
     return {
         "thi": round(thi),
         "status": st.status,
@@ -107,3 +108,46 @@ def tire_health(st: TireState, temp_c: float, pressure_psi: float, residual: flo
         "capped": cause is not None,  # a critical alarm set the score, not just a low component
         "components": {k: round(v) for k, v in components.items()},
     }
+
+
+def lasting_components(st: TireState) -> dict:
+    """The non-wear THI components counting only lasting harm, for the laps-to-danger forecast.
+
+    Operating temperature is left out: a tire that is cold after stopping, or briefly hot, recovers as
+    soon as it runs in its window again, and its pressure moves with its temperature. What stays with
+    the tire is heat damage, air it has lost (the temperature-compensated residual) and lock-up /
+    wheelspin damage.
+    """
+    return {
+        "thermal": clamp(100.0 - st.heat_damage),
+        "pressure": pressure_target(st.residual, config.PRESSURE_NOMINAL_PSI),  # air loss only, no temperature effect
+        "damage": damage_component(st.damage_penalty),
+    }
+
+
+def laps_to_danger(st: TireState, tire_age_laps: float, laps_remaining: float) -> float:
+    """Laps until this tire's THI falls into the danger zone (below DANGER_THI), for one laps estimate.
+
+    Wear is projected forward with the laps model; the other components count only lasting harm
+    (lasting_components), so parking or slowing down never moves the forecast.
+    The laps model counts down one per lap along its own curve, so after k more laps
+    laps remaining is R - k and wear = 100 * (R - k) / (age + R): a closed form, no extra model calls.
+    Returns 0 when the tire is in the danger zone now: a critical cap, or lasting harm plus wear
+    already below DANGER_THI.
+    """
+    if st.capped:
+        return 0.0
+    age, r = max(0.0, tire_age_laps), max(0.0, laps_remaining)
+    lasting = lasting_components(st)
+    rest = math.prod((lasting[k] / 100.0) ** w for k, w in config.THI_WEIGHTS.items() if k != "wear")
+    limit = config.DANGER_THI / 100.0
+    if rest <= limit or age + r <= 0:  # the other components alone already put it in danger
+        return 0.0
+    wear_at_danger = 100.0 * (limit / rest) ** (1.0 / config.THI_WEIGHTS["wear"])  # wear score where THI = DANGER_THI
+    k = r - wear_at_danger * (age + r) / 100.0
+    return max(0.0, min(float(config.MAX_FORECAST_LAPS), k))
+
+
+def danger_band(st: TireState, tire_age_laps: float, laps_remaining: dict) -> dict:
+    """Laps to danger for the low / mid / high laps estimates (low = pessimistic)."""
+    return {band: round(laps_to_danger(st, tire_age_laps, laps_remaining[band]), 1) for band in ("low", "mid", "high")}

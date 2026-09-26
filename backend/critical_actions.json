@@ -1,0 +1,48 @@
+{
+  "_how_to_edit": [
+    "Immediate actions shown on the dashboard for each critical alert. Edit freely; the running backend picks up changes on the next frame (no restart).",
+    "Keys are alert kinds: 'lockup', 'wheelspin', 'overheat' and 'pressure' raise critical alerts; 'default' is used for any other kind.",
+    "Each entry has a 'title' and a list of 'actions', shown in order. Keep each action short and in the imperative.",
+    "Placeholders: {tire} (e.g. RR), {tire_name} (e.g. rear-right), {axle} (front or rear), {side} (left or right).",
+    "If this file has a mistake (invalid JSON or a missing field), the backend logs a warning and uses its built-in actions."
+  ],
+  "lockup": {
+    "title": "{tire} locked up: flat-spot risk",
+    "actions": [
+      "Radio the driver: brake earlier and lighter into this corner; the {tire_name} locked for over a second.",
+      "Ask the driver about vibration under braking: a sign of a flat spot.",
+      "If there is vibration, box this lap for a new set."
+    ]
+  },
+  "wheelspin": {
+    "title": "{tire} heavy wheelspin",
+    "actions": [
+      "Radio the driver: feed the throttle in gently out of slow corners.",
+      "Short-shift on corner exit to take torque off the {axle} tires.",
+      "Watch the {tire_name} temperature next lap; box if it overheats."
+    ]
+  },
+  "overheat": {
+    "title": "{tire} over the temperature limit",
+    "actions": [
+      "Radio the driver: lift and coast into the next braking zones to cool the {tire_name} tire.",
+      "Ease the load on the {side} side: smoother steering through fast corners.",
+      "If it is still above the limit after one more lap, box this lap for a new set."
+    ]
+  },
+  "pressure": {
+    "title": "{tire} losing air",
+    "actions": [
+      "Box this lap: the {tire_name} tire has lost air.",
+      "Radio the driver: stay off the kerbs and reduce speed through high-load corners.",
+      "Crew: prepare a new set and check the {tire_name} rim and valve for damage."
+    ]
+  },
+  "default": {
+    "title": "{tire} critical",
+    "actions": [
+      "Radio the driver and check the {tire_name} tire.",
+      "Prepare to box this lap."
+    ]
+  }
+}

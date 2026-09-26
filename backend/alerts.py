@@ -8,6 +8,7 @@ Keeps the last MAX_ALERTS alerts in memory, newest first, with two exceptions:
 from itertools import count
 
 import config
+import actions
 import detectors
 from state import SlipEvent, TireState
 
@@ -35,7 +36,7 @@ _SLIP_GROUP_MESSAGES = {
 }
 _SEVERITY_RANK = {"info": 0, "warn": 1, "bad": 2, "critical": 3}
 
-_OUTPUT_KEYS = ("severity", "tire", "message", "lap", "t")  # contract fields, plus "pinned" on output
+_OUTPUT_KEYS = ("severity", "tire", "message", "lap", "t", "kind")  # plus "pinned"; critical alerts add "title", "actions"
 
 
 def _pinned(a: dict) -> bool:
@@ -52,15 +53,26 @@ class AlertLog:
         self._ids = count(1)
         self._groups: dict[tuple, dict] = {}  # (tire, kind, lap) -> {"id", "count", "peak", "longest"}
 
-    def create(self, severity: str, tire: str, message: str, lap: int, t: float) -> int:
+    def create(self, severity: str, tire: str, message: str, lap: int, t: float, kind: str = "other") -> int:
         """Add a new alert at the top of the log and return its id. Evicts the oldest unpinned alert."""
         alert_id = next(self._ids)
         self._alerts.insert(0, {"id": alert_id, "active": True, "severity": severity, "tire": tire,
-                                "message": message, "lap": lap, "t": round(t, 1)})
+                                "message": message, "lap": lap, "t": round(t, 1), "kind": kind})
         while len(self._alerts) > self._maxlen:
             victim = next((a for a in reversed(self._alerts) if not _pinned(a)), self._alerts[-1])
             self._alerts.remove(victim)
         return alert_id
+
+    def expire(self, t: float) -> None:
+        """Unpin critical slip alerts whose pinned time is over."""
+        for a in self._alerts:
+            if a.get("expires_t") is not None and t >= a["expires_t"]:
+                a["active"], a["expires_t"] = False, None
+
+    def close_all(self) -> None:
+        """New tires: nothing on the old set is active any more (unpins every critical)."""
+        for a in self._alerts:
+            a["active"], a["expires_t"] = False, None
 
     def move_to_top(self, alert_id: int | None) -> None:
         """An old entry got new activity (a grouped repeat): show it as newest."""
@@ -109,11 +121,19 @@ class AlertLog:
     def to_output(self) -> list[dict]:
         """Alerts for the output frame: pinned first, then newest first; contract fields only."""
         ordered = [a for a in self._alerts if _pinned(a)] + [a for a in self._alerts if not _pinned(a)]
-        return [{**{k: a[k] for k in _OUTPUT_KEYS}, "pinned": _pinned(a)} for a in ordered]
+        return [_output(a) for a in ordered]
 
 
 def _worse(a: str, b: str) -> str:
     return a if _SEVERITY_RANK.get(a, 0) >= _SEVERITY_RANK.get(b, 0) else b
+
+
+def _output(a: dict) -> dict:
+    """One alert as the dashboard gets it. Critical alerts carry their title and immediate actions."""
+    out = {**{k: a[k] for k in _OUTPUT_KEYS}, "pinned": _pinned(a)}
+    if a["severity"] == "critical":
+        out.update(actions.for_alert(a["kind"], a["tire"]))
+    return out
 
 
 def track_slip_event(log: AlertLog, ev: SlipEvent, kind: str, tire: str, r: detectors.SlipResult,
@@ -130,12 +150,12 @@ def track_slip_event(log: AlertLog, ev: SlipEvent, kind: str, tire: str, r: dete
         if g is None:
             start_t = ev.start_t if ev.start_t is not None else t
             ev.alert_id = log.create(r.severity, tire, _SLIP_MESSAGES[kind][0].format(tire=tire, peak=r.peak),
-                                     lap, start_t)
+                                     lap, start_t, kind=kind)
             g = log.start_slip_group(tire, kind, lap, ev.alert_id)
         else:
             g["count"] += 1
             ev.alert_id = g["id"]
-            log.update(ev.alert_id, active=True)
+            log.update(ev.alert_id, active=True, expires_t=None)
             log.move_to_top(ev.alert_id)
     else:
         g = log.slip_group(tire, kind, lap)
@@ -153,8 +173,11 @@ def track_slip_event(log: AlertLog, ev: SlipEvent, kind: str, tire: str, r: dete
     if r.phase == detectors.ENDED:
         g["longest"] = max(g["longest"], r.duration_s)
         dur = r.duration_s if g["count"] == 1 else g["longest"]
-        log.finalize(ev.alert_id, severity=severity,
-                     message=end.format(tire=tire, peak=g["peak"], dur=dur, n=g["count"]))
+        message = end.format(tire=tire, peak=g["peak"], dur=dur, n=g["count"])
+        if severity == "critical":  # the harm outlasts the slide: stay pinned for a while
+            log.update(ev.alert_id, severity=severity, message=message, expires_t=t + config.SLIP_CRIT_PIN_S)
+        else:
+            log.finalize(ev.alert_id, severity=severity, message=message)
         ev.alert_id = None
     else:
         log.update(ev.alert_id, severity=severity, message=live.format(tire=tire, peak=g["peak"], n=g["count"]))
@@ -183,14 +206,14 @@ def track_overheat(log: AlertLog, st: TireState, tire: str, r: detectors.Overhea
     if r.prev == detectors.CRITICAL:
         log.finalize(st.overheat_alert_id)  # no longer over the limit: unpin
     if r.state == detectors.WARNING and r.prev == detectors.NONE:
-        st.overheat_alert_id = log.create("warn", tire, _OVERHEAT_MESSAGES["warning"].format(**fmt), lap, t)
+        st.overheat_alert_id = log.create("warn", tire, _OVERHEAT_MESSAGES["warning"].format(**fmt), lap, t, kind="overheat")
     elif r.state == detectors.CRITICAL and not st.overheat_crit_alerted:
-        st.overheat_alert_id = log.create("critical", tire, _OVERHEAT_MESSAGES["critical"].format(**fmt), lap, t)
+        st.overheat_alert_id = log.create("critical", tire, _OVERHEAT_MESSAGES["critical"].format(**fmt), lap, t, kind="overheat")
         st.overheat_crit_alerted = True
     elif r.state == detectors.CRITICAL:
         log.update(st.overheat_alert_id, active=True)  # over the limit again this episode: re-pin
     elif r.state == detectors.NONE:
-        log.create("info", tire, _OVERHEAT_MESSAGES["cleared"].format(**fmt), lap, t)
+        log.create("info", tire, _OVERHEAT_MESSAGES["cleared"].format(**fmt), lap, t, kind="overheat")
         st.overheat_alert_id = None
         st.overheat_crit_alerted = False
 
@@ -209,7 +232,8 @@ def track_pressure(log: AlertLog, st: TireState, tire: str, r: detectors.Pressur
         log.finalize(st.pressure_alert_id)
         st.pressure_worst = r.residual
         severity, template = _PRESSURE_MESSAGES[r.state]
-        alert_id = log.create(severity, tire, template.format(tire=tire, deficit=max(0.0, -r.residual)), lap, t)
+        alert_id = log.create(severity, tire, template.format(tire=tire, deficit=max(0.0, -r.residual)), lap, t,
+                              kind="pressure")
         st.pressure_alert_id = None if r.state == detectors.NONE else alert_id
     elif st.pressure_alert_id is not None and r.residual < st.pressure_worst:
         st.pressure_worst = r.residual
@@ -223,4 +247,4 @@ def new_stint(log: AlertLog, compound: str, tire_age_laps: float, lap: int, t: f
         msg = f"New stint: used {compound} tires, {tire_age_laps:.0f} laps old."
     else:
         msg = f"New stint: new {compound} tires."
-    log.create("info", "ALL", msg, lap, t)
+    log.create("info", "ALL", msg, lap, t, kind="stint")
