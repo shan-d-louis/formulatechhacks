@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tire Sim</title>
+<style>
+  :root { --bg:#0e1116; --panel:#171b22; --line:#2a303a; --text:#e6e8eb; --dim:#8a93a0; --ok:#3ecf8e; --bad:#ff5d5d; --acc:#4ea1ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, sans-serif; display:flex; flex-direction:column; height:100vh; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:14px; margin:0; letter-spacing:.04em; }
+  .main { flex:1; display:flex; min-height:0; }
+  #view { flex:1; position:relative; min-width:0; }
+  canvas { display:block; width:100%; height:100%; }
+  #hud { position:absolute; left:12px; top:12px; background:rgba(23,27,34,.85); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-variant-numeric:tabular-nums; }
+  #hud .big { font-size:28px; font-weight:700; }
+  aside { width:300px; background:var(--panel); border-left:1px solid var(--line); padding:14px; overflow-y:auto; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:18px 0 8px; }
+  h2:first-child { margin-top:0; }
+  button, select { width:100%; padding:8px 10px; margin:3px 0; background:#222834; color:var(--text); border:1px solid var(--line); border-radius:6px; font:inherit; cursor:pointer; text-align:left; }
+  button:hover { border-color:var(--acc); }
+  button.active { border-color:var(--acc); background:#1d2a3d; }
+  .row { display:flex; gap:6px; } .row > * { flex:1; }
+  .conn { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--dim); }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--bad); }
+  .dot.on { background:var(--ok); }
+  kbd { background:#222834; border:1px solid var(--line); border-radius:4px; padding:0 5px; font-size:12px; }
+  .keys { color:var(--dim); font-size:12px; line-height:1.9; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:13px; }
+  td, th { padding:3px 4px; text-align:right; } th:first-child, td:first-child { text-align:left; }
+  th { color:var(--dim); font-weight:500; }
+  .note { color:var(--dim); font-size:12px; margin-top:14px; }
+  .sublabel { color:var(--dim); font-size:12px; margin:10px 0 2px; }
+  .seg button { text-align:center; }
+  #demoStatus { margin-top:8px; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TIRE SIM</h1>
+  <div class="conn" title="" id="conn"><span class="dot" id="dot"></span><span id="connText">Backend offline</span></div>
+</header>
+<div class="main">
+<div id="view">
+  <canvas id="c"></canvas>
+  <div id="hud"><div class="big" id="hudSpeed">0</div><div>kph · lap <span id="hudLap">1</span> · age <span id="hudAge">0.0</span> laps <span id="hudDemo" style="color:var(--acc)"></span></div><div id="hudScenario" style="color:var(--acc)"></div></div>
+</div>
+<aside>
+  <h2>Scenarios</h2>
+  <button data-scn="lockup">Hard braking at speed → front lock-up <kbd>1</kbd></button>
+  <button data-scn="wheelspin">Full throttle from low speed → wheelspin <kbd>2</kbd></button>
+  <button data-scn="corner">Sustained cornering → overheat <kbd>3</kbd></button>
+  <div class="row">
+    <select id="punctureTire"><option>FL</option><option>FR</option><option>RL</option><option selected>RR</option></select>
+    <button id="punctureBtn">Slow puncture <kbd>4</kbd></button>
+  </div>
+  <div class="row">
+    <select id="compound"><option>SOFT</option><option selected>MEDIUM</option><option>HARD</option></select>
+    <button id="newTires">Fit new tires <kbd>N</kbd></button>
+  </div>
+
+  <h2>Demo: tire age</h2>
+  <button id="plus5">+5 laps of tire age <kbd>+</kbd></button>
+  <div class="sublabel">Fit used tires (compound above)</div>
+  <div class="row seg">
+    <button data-used="10">10 laps</button><button data-used="20">20 laps</button><button data-used="30">30 laps</button>
+  </div>
+  <div class="sublabel">Tire aging speed (car speed unchanged)</div>
+  <div class="row seg">
+    <button data-speed="1" class="active">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button>
+  </div>
+  <div class="note" id="demoStatus"></div>
+
+  <h2>Controls</h2>
+  <div class="keys"><kbd>W</kbd>/<kbd>↑</kbd> throttle · <kbd>S</kbd>/<kbd>↓</kbd> brake · <kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd> steer<br><kbd>Space</kbd> stamp on the brakes (can lock) · <kbd>Esc</kbd> cancel scenario</div>
+
+  <h2>Raw sensors (sent at 10 Hz)</h2>
+  <table>
+    <thead><tr><th></th><th>wheel kph</th><th>°C</th><th>psi</th></tr></thead>
+    <tbody id="sensors"></tbody>
+  </table>
+  <p class="note">Simulated sensor data. This page only sends raw frames; all detection runs in the backend.</p>
+</aside>
+</div>
+
+<script>
+// ---------- Constants (sim physics only) ----------
+const PHYS_DT = 1 / 60;          // s, physics step
+const SEND_HZ = 10;              // raw frames per second
+const RECONNECT_MS = 2000;       // retry interval when the backend is offline
+const LAP_LENGTH_M = 5000;       // distance per "lap"
+const TRACK_TEMP_C = 35, AIR_TEMP_C = 24;
+const P_COLD = 20.5, T_COLD = 85; // gas-law reference: a healthy tire reads this at 85 °C
+const CORNERS = ['FL', 'FR', 'RL', 'RR'];
+const G = 9.81;
+const MAX_LAT = 4.5 * G;         // lateral grip cap
+const CURVATURE_PER_STEER = 0.02; // 1/m at full lock
+const TOP_SPEED = 100;           // m/s
+const REAR_GRIP = 12;            // m/s^2 traction limit before wheelspin, at standstill
+const REAR_DOWNFORCE = 0.4;      // extra rear grip per m/s of speed (downforce), like the fronts
+const TEMP_TAU = 6;              // s, tire temp response
+const LEAK_RATE = 0.006;         // fraction of air lost per second on a puncture
+const WEAR_END_LAPS = 40;        // tire age at which wear (grip loss) reaches its maximum
+const GRIP_LOSS_AT_END = 0.25;   // fraction of grip a fully worn tire has lost
+const AGE_STEP_LAPS = 5;         // the "+5 laps" button
+
+const backendHost = new URLSearchParams(location.search).get('backend') || 'localhost:8000';
+const WS_URL = `ws://${backendHost}/ws/sim`;
+
+// ---------- State ----------
+const car = { x: 0, y: 0, heading: -Math.PI / 2, v: 0, throttle: 0, brake: 0, steer: 0, dist: 0, t: 0 };
+let compound = 'MEDIUM';
+const tires = {};
+// Tire age grows with distance (times the demo speed) and can jump for the demo.
+// Wear follows age, so an older set always has less grip, however it got old.
+const stint = { id: 0, ageLaps: 0, wear: 0 };
+let demoSpeed = 1;
+function setTireAge(laps) {
+  stint.ageLaps = Math.max(0, laps);
+  stint.wear = Math.min(1, stint.ageLaps / WEAR_END_LAPS);
+}
+const gripFactor = () => 1 - GRIP_LOSS_AT_END * stint.wear;
+function fitTires(ageLaps = 0) {
+  for (const c of CORNERS) tires[c] = { temp: 80, air: 1 + (Math.random() - 0.5) * 0.004, leak: 0, slip: 0, wheel: 0 };
+  compound = document.getElementById('compound').value;
+  stint.id += 1;  // new or used set: a new stint for the backend
+  setTireAge(ageLaps);
+  updateDemoUI();
+}
+function addTireAge(laps) { setTireAge(stint.ageLaps + laps); updateDemoUI(); }  // same stint
+function setDemoSpeed(x) { demoSpeed = x; updateDemoUI(); }
+function updateDemoUI() {
+  document.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('active', Number(b.dataset.speed) === demoSpeed));
+  document.getElementById('hudDemo').textContent = demoSpeed > 1 ? `· aging ${demoSpeed}×` : '';
+  document.getElementById('demoStatus').textContent =
+    `Stint ${stint.id} · ${compound} · ${stint.ageLaps.toFixed(1)} laps old · grip ${Math.round(gripFactor() * 100)}%`;
+}
+fitTires();
+
+// ---------- Input ----------
+const keys = new Set();
+addEventListener('keydown', e => {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  const k = e.key.toLowerCase();
+  if (k === 'escape') return stopScenario();
+  if (k === '1') return startScenario('lockup');
+  if (k === '2') return startScenario('wheelspin');
+  if (k === '3') return startScenario('corner');
+  if (k === '4') return puncture();
+  if (k === 'n') return fitTires();
+  if (k === '+' || k === '=') return addTireAge(AGE_STEP_LAPS);
+  keys.add(k);
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+
+function keyboardControls() {
+  const thr = keys.has('w') || keys.has('arrowup') ? 1 : 0;
+  const brk = keys.has(' ') ? 1 : (keys.has('s') || keys.has('arrowdown') ? 0.5 : 0);
+  const str = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
+  return { throttle: thr, brake: brk, steer: str * 0.6 };
+}
+
+// ---------- Scenarios (drive the controls; physics stays the same) ----------
+let scenario = null;
+const SCENARIOS = {
+  lockup: {
+    label: 'Lock-up: stamping on the brakes from 290 kph', duration: 2.5,
+    init() { car.v = Math.max(car.v, 290 / 3.6); },
+    controls: () => ({ throttle: 0, brake: 1, steer: 0 }),
+  },
+  wheelspin: {
+    label: 'Wheelspin: full throttle from 20 kph', duration: 2.5,
+    init() { car.v = 20 / 3.6; },  // rear downforce grips from ~50 kph, so start slow
+    controls: () => ({ throttle: 1, brake: 0, steer: 0 }),
+  },
+  corner: {
+    label: 'Sustained cornering at 230 kph', duration: 15,
+    init() { car.v = Math.max(car.v, 230 / 3.6); },
+    controls: () => ({ throttle: car.v < 230 / 3.6 ? 1 : 0.3, brake: 0, steer: 0.4 }),
+  },
+};
+function startScenario(name) {
+  const s = SCENARIOS[name];
+  car.throttle = car.brake = 0;
+  s.init();
+  scenario = { ...s, name, left: s.duration };
+  keys.clear();
+  updateScenarioUI();
+}
+function stopScenario() { scenario = null; updateScenarioUI(); }
+function puncture() { tires[document.getElementById('punctureTire').value].leak = LEAK_RATE; }
+function updateScenarioUI() {
+  document.getElementById('hudScenario').textContent = scenario ? scenario.label : '';
+  document.querySelectorAll('[data-scn]').forEach(b => b.classList.toggle('active', scenario?.name === b.dataset.scn));
+}
+document.querySelectorAll('[data-scn]').forEach(b => b.onclick = () => startScenario(b.dataset.scn));
+document.getElementById('punctureBtn').onclick = puncture;
+document.getElementById('newTires').onclick = () => fitTires(0);
+document.getElementById('plus5').onclick = () => addTireAge(AGE_STEP_LAPS);
+document.querySelectorAll('[data-used]').forEach(b => b.onclick = () => fitTires(Number(b.dataset.used)));
+document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => setDemoSpeed(Number(b.dataset.speed)));
+
+// ---------- Physics ----------
+const approach = (x, target, rate, dt) => x + (target - x) * Math.min(1, rate * dt);
+const noise = a => (Math.random() - 0.5) * 2 * a;
+
+function step(dt) {
+  let ctl = keyboardControls();
+  if (scenario) {
+    ctl = scenario.controls();
+    scenario.left -= dt;
+    if (scenario.left <= 0) stopScenario();
+  }
+  car.throttle = approach(car.throttle, ctl.throttle, 8, dt);
+  car.brake = approach(car.brake, ctl.brake, 10, dt);
+  car.steer = approach(car.steer, ctl.steer, 5, dt);
+  const v = car.v;
+  const grip = gripFactor();  // worn tires: less traction, braking and cornering grip
+
+  // Longitudinal: engine (traction-limited at the rear) and brakes (grip-limited at the front)
+  const engineAccel = car.throttle * 22 * Math.min(1, 30 / Math.max(v, 1)) * (1 - v / TOP_SPEED);
+  const rearGrip = (REAR_GRIP + REAR_DOWNFORCE * v) * grip;  // spins only pulling hard out of slow corners
+  const rearExcess = Math.max(0, engineAccel - rearGrip);
+  const rearSlip = rearExcess * 0.1;
+  const brakeDemand = car.brake * 55;
+  const frontGrip = (34 + 0.08 * v) * grip;
+  const frontExcess = Math.max(0, brakeDemand - frontGrip);
+  const frontSlip = -Math.min(1, (frontExcess / frontGrip) * 1.3 + (frontExcess > 0 && v < 15 ? 0.4 : 0));
+  const decel = Math.min(brakeDemand, frontGrip * (frontExcess > 0 ? 0.85 : 1));
+  const drag = 0.0004 * v * v + 0.3;
+  car.v = Math.max(0, v + (Math.min(engineAccel, rearGrip + rearExcess * 0.2) - decel - drag) * dt);
+
+  // Lateral: steer sets curvature, lateral accel capped by grip
+  const maxLat = MAX_LAT * grip;
+  const latAccel = Math.max(-maxLat, Math.min(maxLat, v * v * car.steer * CURVATURE_PER_STEER));
+  if (v > 0.5) car.heading += (latAccel / v) * dt;
+  car.x += Math.cos(car.heading) * v * dt;
+  car.y += Math.sin(car.heading) * v * dt;
+  car.dist += v * dt;
+  car.t += dt;
+  setTireAge(stint.ageLaps + (v * dt / LAP_LENGTH_M) * demoSpeed);  // demo speed ages tires, not the car
+
+  // Per-tire: wheel speed, temperature, pressure
+  const latG = latAccel / G;
+  for (const c of CORNERS) {
+    const tr = tires[c];
+    const front = c[0] === 'F', left = c[1] === 'L';
+    tr.slip = front ? (v > 0.5 ? frontSlip : 0) : rearSlip;
+    // Turning right (latG > 0) loads the left tires
+    const outsideLoad = latG > 0 === left ? 1 : 0.3;
+    const cornerSpeed = v * (1 + (left ? 1 : -1) * latG * 0.004);
+    tr.wheel = Math.max(0, cornerSpeed * (1 + tr.slip) + (front ? 0 : rearSlip * 6));
+
+    const target = TRACK_TEMP_C
+      + 0.25 * v * 3.6
+      + 12 * Math.abs(latG) * outsideLoad
+      + 60 * Math.abs(tr.slip)
+      + (front ? 10 * car.brake * Math.min(1, v / 50) : 0);
+    tr.temp = approach(tr.temp, target, 1 / TEMP_TAU, dt);
+    tr.air = Math.max(0.3, tr.air - tr.leak * dt);
+  }
+}
+
+// ---------- Raw frame (contract: see contracts.md) ----------
+const r = (x, d = 1) => Math.round(x * 10 ** d) / 10 ** d;
+function rawFrame() {
+  const out = {};
+  for (const c of CORNERS) {
+    const tr = tires[c];
+    const psi = tr.air * P_COLD * (tr.temp + 273) / (T_COLD + 273);
+    out[c] = { wheel_speed_kph: r(tr.wheel * 3.6 + noise(0.1)), temp_c: r(tr.temp + noise(0.15)), pressure_psi: r(psi + noise(0.02), 2) };
+  }
+  return {
+    t: r(car.t, 2),
+    lap: Math.floor(car.dist / LAP_LENGTH_M) + 1,
+    compound,
+    tire_age_laps: r(stint.ageLaps, 2),
+    stint_id: stint.id,
+    demo_speed: demoSpeed,
+    speed_kph: r(car.v * 3.6),
+    throttle: r(car.throttle, 2),
+    brake: r(car.brake, 2),
+    steer: r(car.steer, 2),
+    track_temp_c: TRACK_TEMP_C,
+    air_temp_c: AIR_TEMP_C,
+    tires: out,
+  };
+}
+
+// ---------- WebSocket ----------
+// Optional: the sim keeps running normally when the backend is offline.
+let ws = null;
+function connect() {
+  let retried = false;
+  const retry = () => {  // exactly one retry per socket, whichever of error/close fires first
+    if (retried) return;
+    retried = true;
+    setConn(false);
+    setTimeout(connect, RECONNECT_MS);
+  };
+  let sock;
+  try {
+    sock = ws = new WebSocket(WS_URL);
+  } catch (e) {
+    return retry();
+  }
+  sock.onopen = () => setConn(true);
+  sock.onclose = retry;
+  sock.onerror = () => { retry(); try { sock.close(); } catch (e) {} };
+}
+function setConn(on) {
+  document.getElementById('dot').classList.toggle('on', on);
+  document.getElementById('connText').textContent = on ? 'Backend connected' : 'Backend offline';
+  document.getElementById('conn').title = WS_URL;
+}
+function sendFrame(f) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  try { ws.send(JSON.stringify(f)); } catch (e) { /* dropped; onclose handles reconnect */ }
+}
+connect();
+
+setInterval(() => {
+  const f = rawFrame();
+  sendFrame(f);
+  document.getElementById('sensors').innerHTML = CORNERS.map(c =>
+    `<tr><td>${c}</td><td>${f.tires[c].wheel_speed_kph.toFixed(1)}</td><td>${f.tires[c].temp_c.toFixed(1)}</td><td>${f.tires[c].pressure_psi.toFixed(2)}</td></tr>`).join('');
+  document.getElementById('hudLap').textContent = f.lap;
+  document.getElementById('hudAge').textContent = f.tire_age_laps.toFixed(1);
+  updateDemoUI();
+}, 1000 / SEND_HZ);
+
+// ---------- Render ----------
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+function render() {
+  const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#12161c'; ctx.fillRect(0, 0, w, h);
+
+  // World grid, camera follows the car (1 m = 3 px)
+  const S = 3, GRID = 50;
+  ctx.save();
+  ctx.translate(w / 2, h / 2); ctx.scale(S, S); ctx.translate(-car.x, -car.y);
+  ctx.strokeStyle = '#1f252e'; ctx.lineWidth = 1 / S;
+  const x0 = Math.floor((car.x - w / S) / GRID) * GRID, y0 = Math.floor((car.y - h / S) / GRID) * GRID;
+  for (let x = x0; x < car.x + w / S; x += GRID) { ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, car.y + h / S); ctx.stroke(); }
+  for (let y = y0; y < car.y + h / S; y += GRID) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(car.x + w / S, y); ctx.stroke(); }
+
+  // Car body and tires (tire color = temperature only; no health scoring here)
+  ctx.translate(car.x, car.y); ctx.rotate(car.heading);
+  ctx.fillStyle = '#4ea1ff'; ctx.fillRect(-2.6, -0.9, 5.2, 1.8);
+  const pos = { FL: [1.8, -1.1], FR: [1.8, 1.1], RL: [-1.8, -1.1], RR: [-1.8, 1.1] };
+  for (const c of CORNERS) {
+    const hot = Math.max(0, Math.min(1, (tires[c].temp - 80) / 40));
+    ctx.fillStyle = `rgb(${60 + 195 * hot},${70 + 60 * (1 - hot)},${90 * (1 - hot)})`;
+    ctx.fillRect(pos[c][0] - 0.5, pos[c][1] - 0.3, 1, 0.6);
+  }
+  ctx.restore();
+
+  document.getElementById('hudSpeed').textContent = Math.round(car.v * 3.6);
+}
+
+let last = performance.now(), acc = 0;
+function loop(now) {
+  acc += Math.min(0.25, (now - last) / 1000); last = now;
+  while (acc >= PHYS_DT) { step(PHYS_DT); acc -= PHYS_DT; }
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

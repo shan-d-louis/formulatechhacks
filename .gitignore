@@ -7,3 +7,13 @@ data/processed/
 models/weights/*.joblib
 data/*.log
 .fastf1_cache/
+.pytest_cache/
+training/cache/
+
+# Local assistant instructions and tool settings (kept out of the repo)
+CLAUDE.md
+.claude/
+.env
+
+# Large or rebuildable training data (rebuild with training/fetch.py + prepare.py)
+training/data/

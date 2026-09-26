@@ -12,3 +12,15 @@ huggingface_hub>=0.24
 fastapi>=0.111
 uvicorn[standard]>=0.30
 qrcode>=7.4
+fastapi
+uvicorn[standard]
+numpy
+pandas
+lightgbm
+scikit-learn
+joblib
+fastf1
+pytest
+httpx
+pyarrow
+matplotlib

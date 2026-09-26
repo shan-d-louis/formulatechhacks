@@ -266,6 +266,36 @@ uv run python datasets/extract_kaggle_tyre_strategy.py --kaggle-dataset navenkum
 If `uv` is not available, install dependencies with your preferred Python environment
 manager using `pyproject.toml` as the source of truth.
 
+## Live Pit-Wall Pipeline
+
+Browser simulator → FastAPI backend → pit-wall dashboard, over WebSockets at 10 Hz.
+Message formats (raw frames in, output frames out) are specified in `contracts.md`. Tyre temperatures and pressures here are simulated, not real.
+
+- `simulator/` - drivable car in the browser; sends raw sensor frames only.
+- `backend/` - features, detectors, alert engine, Tyre Health Index, laps estimate.
+- `dashboard/` - displays output frames only.
+- `training/` - offline laps model: `fetch.py` (FastF1 2023-24 dry races), `prepare.py`
+  (clean laps, fuel-correct, lap-time delta target), `train.py` (baseline curve + LightGBM
+  quantile models, grouped CV by race). Saves `laps_model.joblib`, which the backend loads.
+- `backend/scenarios.py` - runs the demo scenarios headless through the backend.
+
+The backend's dependencies are in `requirements.txt` for now (not yet merged into
+`pyproject.toml`); it runs on Python 3.11+.
+
+```bash
+pip install -r requirements.txt
+cd backend && uvicorn main:app --reload --port 8000
+```
+
+In a second terminal, from the repository root:
+
+```bash
+python -m http.server 5500
+```
+
+Open `http://localhost:5500/simulator/` and `http://localhost:5500/dashboard/`.
+Backend tests: `cd backend && python -m pytest -q tests`.
+
 ## Project Hygiene
 
 - Do not commit credentials, private tokens, raw large datasets, generated caches, or
