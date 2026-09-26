@@ -5,6 +5,27 @@ without unnecessary exploration.
 
 ---
 
+## Agent Instruction Hierarchy
+
+This repository may be used by different coding agents and assistants. Before acting,
+each agent should read the instruction files native to its own runtime or directory
+layout, then use this file as the shared project-level guide.
+
+Examples of agent-specific places to check when present:
+
+- `.agents/` for local Codex-style skills or repository guidance.
+- `.github/instructions/` and `.github/skills/` for GitHub Copilot-style instructions
+  and agent roles.
+- Tool-specific files such as `CLAUDE.md`, `GEMINI.md`, `.cursorrules`,
+  `.windsurfrules`, or other assistant-specific docs if they are added later.
+
+If these sources conflict, follow the user's current request first, then the most
+specific local agent instruction, then this shared repository guide, then the README.
+Do not assume instructions for one agent runtime automatically apply to another unless
+they describe repository facts, safety limits, data contracts, or development workflow.
+
+---
+
 ## What This Repository Does
 
 Builds SIDEWALL, an AI tyre-safety digital twin and pit-wall monitor for FormulaTech

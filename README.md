@@ -153,7 +153,12 @@ manager using `pyproject.toml` as the source of truth.
 ## Related Docs
 
 - `TRACKS.md` - hackathon track summary.
-- `.github/skills/AGENTS.md` - agent-facing repository guidance.
-- `.github/instructions/copilot-instructions.md` - coding-agent instructions.
+- `.github/skills/AGENTS.md` - shared agent-facing repository guidance.
+- `.github/instructions/copilot-instructions.md` - GitHub Copilot-specific
+  instructions.
 - `.agents/skills/` - local skills for testing, data pipeline, modelling, training,
   evaluation, notebooks, and repo guidance.
+
+Different assistants should keep their runtime-specific instructions in their own
+conventional directories or files, then refer back to the shared docs above for
+repository facts, safety limits, data-source assumptions, and development workflow.

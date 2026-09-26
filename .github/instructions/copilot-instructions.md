@@ -1,5 +1,17 @@
 # GitHub Copilot Instructions - FormulaTech Hacks
 
+## Agent-Specific Instructions
+
+These instructions are written for GitHub Copilot-style agents. Other coding agents
+should first read their own native instruction directory or runtime-specific files,
+then use `.github/skills/AGENTS.md` and `README.md` for shared repository context.
+
+When adding or updating instructions for another agent, place them in that agent's own
+directory or conventional file, and keep shared repository facts synchronized here,
+in `.github/skills/AGENTS.md`, and in `README.md` when they affect users.
+
+---
+
 ## Project context
 This repository is for the FormulaTech Hacks SIDEWALL concept: an AI tyre-safety
 digital twin and pit-wall monitor for motorsport safety diagnosis.
