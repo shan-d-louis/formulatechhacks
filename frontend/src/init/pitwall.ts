@@ -1,3 +1,5 @@
+// @ts-nocheck
+export function initPitwall() {
 // SIDEWALL pit wall. Two modes share the same rendering:
 //   replay: plays back pre-analysed frames of a real race (4 Hz), with a timeline and key moments
 //   live:   merges a fast car-state stream (10 Hz: position, pedals, tyre sensors) with analysed frames
@@ -29,10 +31,31 @@ function tempStatus(t) {
   if (t <= 130) return ["Hot: above the window", "#ffc233"];
   return ["Overheating", "#ff3040"];
 }
+function esc(v) {
+  return String(v)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 3500); }
-function logLine(t, html, color) {
+function logLine(t, text, color, bold) {
   const d = document.createElement("div");
-  d.innerHTML = `<span class="t">${fmtT(t)}</span><span style="color:${color || "inherit"}">${html}</span>`;
+  const ts = document.createElement("span");
+  ts.className = "t";
+  ts.textContent = fmtT(t);
+  const msg = document.createElement("span");
+  msg.style.color = color || "inherit";
+  if (bold) {
+    const b = document.createElement("b");
+    b.textContent = bold;
+    msg.append(b);
+    if (text) msg.append(document.createTextNode(` ${text}`));
+  } else {
+    msg.textContent = text;
+  }
+  d.append(ts, msg);
   $("log").prepend(d);
   while ($("log").children.length > 80) $("log").lastChild.remove();
 }
@@ -100,11 +123,11 @@ function renderRisk(frame) {
     const meaningful = (e.p || 0) >= 0.03 || (e.p_avg || 0) >= 0.05;
     const factors = meaningful ? (e.factors || {}) : {};
     if (!meaningful) e.advice = "";
-    const bar = Object.entries(factors).map(([f, s]) => `<i style="width:${100 * s}%;background:${FACTOR_COLOR[f] || "#666"}" title="${f} ${Math.round(100 * s)}%"></i>`).join("");
+    const bar = Object.entries(factors).map(([f, s]) => `<i style="width:${100 * s}%;background:${FACTOR_COLOR[f] || "#666"}" title="${esc(f)} ${Math.round(100 * s)}%"></i>`).join("");
     // What is actually happening: one measured sentence per factor (top 3).
     const ev = e.evidence || {};
     const keys = Object.entries(factors).slice(0, 3).map(([f, s]) =>
-      `<div class="cause"><i style="background:${FACTOR_COLOR[f] || "#666"}"></i><b>${f} ${Math.round(100 * s)}%</b>${ev[f] ? `<span>${ev[f]}</span>` : ""}</div>`).join("");
+      `<div class="cause"><i style="background:${FACTOR_COLOR[f] || "#666"}"></i><b>${esc(f)} ${Math.round(100 * s)}%</b>${ev[f] ? `<span>${esc(ev[f])}</span>` : ""}</div>`).join("");
     // Grip budget: demand vs what the tyres can give.
     const g = e.grip;
     const axle = k === "lockup" ? "Fronts" : "Rears";
@@ -127,7 +150,7 @@ function renderRisk(frame) {
       <div class="causes">${keys || `<div class="muted" style="font-size:12px">${meaningful
         ? `No single factor stands out: this is the car's baseline ${name.toLowerCase()} risk at this pace.`
         : `No significant ${name.toLowerCase()} risk right now${g && g.pct < 80 ? `: the ${axle.toLowerCase()} have grip to spare` : ""}.`}</div>`}</div>
-      ${e.advice ? `<div class="advice">${hot ? "⚠ " : ""}${e.advice}</div>` : ""}`;
+      ${e.advice ? `<div class="advice">${hot ? "⚠ " : ""}${esc(e.advice)}</div>` : ""}`;
   }
 }
 
@@ -139,7 +162,7 @@ function renderBanner(frame, t) {
   $("callWhy").textContent = c.reasons && c.reasons.length ? c.reasons.join(" · ") : "All four tyres inside their windows.";
   $("callRadio").textContent = c.radio ? `📻 "${c.radio}"` : "";
   if (c.level !== lastLevel) {
-    if (lastLevel >= 0) logLine(t, `<b>${LEVEL[c.level]}</b> ${(c.reasons || []).slice(0, 2).join(", ")}`, LEVEL_COLOR[c.level]);
+    if (lastLevel >= 0) logLine(t, (c.reasons || []).slice(0, 2).join(", "), LEVEL_COLOR[c.level], LEVEL[c.level]);
     if (c.level > 0) pins.push({ x: frame.x, y: frame.y, c: "#ffc233", r: 5 });
     lastLevel = c.level;
     publishCall(frame);
@@ -394,3 +417,6 @@ addEventListener("resize", () => { fitMap(); if (MODE === "replay" && frames.len
   $("scenario").value = key;
   loadReplay(key);
 })();
+
+  return () => undefined;
+}
