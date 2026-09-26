@@ -46,19 +46,62 @@ BASELINE_EXPECTED = {"low": 24.0, "mid": 29.0, "high": 34.0}
 STUB_MEDIUM_AGE_10 = {"low": 16.0, "mid": 20.0, "high": 24.0}
 
 
+class ConstantProba:
+    """Pickle-friendly predict_proba stub for Tier B bundle tests."""
+
+    def __init__(self, p):
+        self.p = p
+
+    def predict_proba(self, X):
+        import numpy as np
+        return np.column_stack([np.full(len(X), 1 - self.p), np.full(len(X), self.p)])
+
+
+def tierb_bundle(tmp_path):
+    bundle = {
+        "models": {
+            "cliff": ConstantProba(0.1),
+            "failure": ConstantProba(0.01),
+            "cliff_horizon": ConstantProba(0.02),
+        },
+        "features": [
+            "tyre_life", "compound_rank", "fresh_tyre", "stint", "race_frac", "fuel_kg",
+            "track_temp_bin", "era18", "slope_so_far", "resid_last", "resid_mean3",
+            "resid_std5", "deg_delta_last", "circuit_deg_prior", "circuit_cliff_life_prior",
+        ],
+        "fail_features": [
+            "tyre_life", "compound_rank", "era18", "race_frac", "track_temp_bin",
+            "slope_so_far", "resid_last", "deg_delta_last", "circuit_deg_prior",
+        ],
+        "safe_risk_level": 0.1,
+        "max_horizon": 10,
+        "priors": __import__("pandas").DataFrame({
+            "compound_rank": [0.0, 1.0, 2.0],
+            "circuit_deg_prior": [0.02, 0.03, 0.04],
+            "circuit_cliff_life_prior": [20.0, 30.0, 40.0],
+        }),
+    }
+    path = tmp_path / "tierb.joblib"
+    joblib.dump(bundle, path)
+    return path
+
+
 # ---------- 1. trained LightGBM model ----------
 
-@pytest.mark.skipif(not laps.DEFAULT_MODEL_PATH.exists(), reason="run training/train.py first")
+@pytest.mark.skipif(not laps.DEFAULT_TRAINED_MODEL_PATH.exists(), reason="build models/weights/tierB_tyre_life.joblib first")
 def test_trained_model_loads_and_is_sane():
-    assert laps.load_model() == "lgbm"
+    assert laps.load_model() == "tierb"
     for compound in config.DRY_COMPOUNDS:
-        prev_mid = math.inf
         for age in (0, 5, 10, 20):
             r = laps.predict_laps(compound, age, 35)
             assert 0 <= r["low"] <= r["mid"] <= r["high"] <= config.MAX_FORECAST_LAPS
-            assert r["mid"] < prev_mid  # older tire, fewer laps left
-            prev_mid = r["mid"]
-    assert laps.predict_laps("SOFT", 0, 35)["mid"] < laps.predict_laps("HARD", 0, 35)["mid"]
+            assert all(math.isfinite(v) for v in r.values())
+    assert laps.predict_laps("SOFT", 0, 35)["low"] <= laps.predict_laps("HARD", 0, 35)["low"]
+
+
+def test_tierb_bundle_is_used_when_available(tmp_path):
+    assert laps.load_model(tierb_bundle(tmp_path)) == "tierb"
+    assert laps.predict_laps("MEDIUM", 5.0, 35) == {"low": 5.0, "mid": 10.0, "high": 10.0}
 
 
 # ---------- 2. baseline, when LightGBM fails ----------

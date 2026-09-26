@@ -1,19 +1,21 @@
 """Laps-remaining model: exposes predict_laps().
-
-Loads training/laps_model.joblib (built by training/train.py) at import. The model
-predicts the fuel-corrected lap-time delta vs. stint start for a given tire age;
-laps remaining = how far we can roll forward from the current age before the
-predicted delta passes CLIFF_DELTA_S.
+Loads the trained Tier B tyre-life model from models/weights first. The legacy
+training/laps_model.joblib bundle is kept as a fallback. The legacy model predicts
+the fuel-corrected lap-time delta vs. stint start for a given tire age; laps
+remaining = how far we can roll forward from the current age before the predicted
+delta passes CLIFF_DELTA_S.
 
 Fallback chain, so the live system never crashes here:
-  1. "lgbm"      per-compound LightGBM quantile models (+ linear tail past the ages seen in training)
-  2. "baseline"  per-compound curve from the same file, if LightGBM fails
-  3. "stub"      fixed per-compound life estimate, if the file is missing or unreadable
-  4. FALLBACK_LAPS if anything else goes wrong
+  1. "tierb"     trained Tier B tyre-life model in models/weights
+  2. "lgbm"      legacy per-compound LightGBM quantile models
+  3. "baseline"  legacy per-compound curve, if LightGBM fails
+  4. "stub"      fixed per-compound life estimate, if files are missing or unreadable
+  5. FALLBACK_LAPS if anything else goes wrong
 """
 
 import logging
 import math
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -23,8 +25,14 @@ import config
 
 log = logging.getLogger("backend.laps")
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+DEFAULT_TRAINED_MODEL_PATH = Path(__file__).resolve().parent / config.TRAINED_LAPS_MODEL_PATH
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / config.MODEL_PATH
 
+_tierb_bundle: dict | None = None  # the trained models/weights bundle, or None if unavailable
 _bundle: dict | None = None  # the loaded joblib dict, or None if missing
 _boosters: dict | None = None  # {compound: [booster_lo, booster_mid, booster_hi]}, or None if unusable
 _warned: set[str] = set()  # failure messages already logged, so 10 Hz frames don't spam stdout
@@ -36,41 +44,88 @@ def _warn_once(msg: str) -> None:
         log.warning(msg)
 
 
-def load_model(path: str | Path | None = None) -> str:
-    """(Re)load the model file. Returns the source predict_laps will use: lgbm | baseline | stub."""
-    global _bundle, _boosters
-    _bundle, _boosters = None, None
-    _warned.clear()
-    _cached.cache_clear()
-    path = Path(path) if path is not None else DEFAULT_MODEL_PATH
+def _load_joblib(path: Path) -> dict:
+    """Load a joblib bundle from a trusted local path."""
+    import joblib
+    bundle = joblib.load(path)
+    if not isinstance(bundle, dict):
+        raise ValueError("not a model bundle")
+    return bundle
 
-    try:
-        import joblib
-        bundle = joblib.load(path)
-        if not isinstance(bundle, dict) or "baseline" not in bundle:
-            raise ValueError("not a laps model bundle")
-        _bundle = bundle
-    except Exception as e:  # missing, corrupt, or wrong format: fixed estimate only
-        log.warning("laps model not loaded from %s (%s: %s); using fixed per-compound estimate",
-                    path, type(e).__name__, e)
-        return source()
 
+def _load_tierb(path: Path) -> dict:
+    """Load the trained Tier B tyre-life bundle."""
+    bundle = _load_joblib(path)
+    required = {"models", "features", "fail_features"}
+    if not required.issubset(bundle):
+        raise ValueError("not a Tier B tyre-life bundle")
+    return bundle
+
+
+def _load_legacy(path: Path) -> tuple[dict, dict | None]:
+    """Load the legacy laps bundle and optional LightGBM boosters."""
+    bundle = _load_joblib(path)
+    if "baseline" not in bundle:
+        raise ValueError("not a laps model bundle")
+
+    boosters = None
     try:
         import lightgbm as lgb
-        _boosters = {
-            c: [lgb.Booster(model_str=_bundle["lgbm"][c][q]["model_str"]) for q in _bundle["quantiles"]]
-            for c in _bundle["compounds"]
+        boosters = {
+            c: [lgb.Booster(model_str=bundle["lgbm"][c][q]["model_str"]) for q in bundle["quantiles"]]
+            for c in bundle["compounds"]
         }
     except Exception as e:  # lightgbm missing or model strings bad: baseline curve still works
         log.warning("LightGBM models unusable (%s: %s); using baseline curve", type(e).__name__, e)
+    return bundle, boosters
 
-    log.info("laps model loaded from %s: source=%s, %s laps / %s races", path, source(),
+
+def load_model(path: str | Path | None = None) -> str:
+    """(Re)load models. Returns the source predict_laps will use: tierb | lgbm | baseline | stub."""
+    global _tierb_bundle, _bundle, _boosters
+    _tierb_bundle, _bundle, _boosters = None, None, None
+    _warned.clear()
+    _cached.cache_clear()
+
+    if path is not None:
+        selected = Path(path)
+        try:
+            _tierb_bundle = _load_tierb(selected)
+            log.info("trained Tier B laps model loaded from %s", selected)
+            return source()
+        except Exception:
+            pass
+        try:
+            _bundle, _boosters = _load_legacy(selected)
+        except Exception as e:
+            log.warning("laps model not loaded from %s (%s: %s); using fixed per-compound estimate",
+                        selected, type(e).__name__, e)
+        return source()
+
+    try:
+        _tierb_bundle = _load_tierb(DEFAULT_TRAINED_MODEL_PATH)
+        log.info("trained Tier B laps model loaded from %s", DEFAULT_TRAINED_MODEL_PATH)
+        return source()
+    except Exception as e:
+        log.warning("trained Tier B laps model not loaded from %s (%s: %s); trying legacy fallback",
+                    DEFAULT_TRAINED_MODEL_PATH, type(e).__name__, e)
+
+    try:
+        _bundle, _boosters = _load_legacy(DEFAULT_MODEL_PATH)
+    except Exception as e:  # missing, corrupt, or wrong format: fixed estimate only
+        log.warning("legacy laps model not loaded from %s (%s: %s); using fixed per-compound estimate",
+                    DEFAULT_MODEL_PATH, type(e).__name__, e)
+        return source()
+
+    log.info("legacy laps model loaded from %s: source=%s, %s laps / %s races", DEFAULT_MODEL_PATH, source(),
              _bundle.get("n_laps"), _bundle.get("n_races"))
     return source()
 
 
 def source() -> str:
-    """Which predictor is active: lgbm | baseline | stub."""
+    """Which predictor is active: tierb | lgbm | baseline | stub."""
+    if _tierb_bundle is not None:
+        return "tierb"
     if _bundle is None:
         return "stub"
     return "lgbm" if _boosters is not None else "baseline"
@@ -134,10 +189,67 @@ def _stub_estimate(compound: str, tire_age_laps: float) -> dict:
     }
 
 
+def _compound_rank(compound: str) -> float:
+    """Map backend dry compounds onto the Tier B relative-compound rank."""
+    ranks = {"SOFT": 0.0, "MEDIUM": 1.0, "HARD": 2.0}
+    return ranks.get(str(compound).upper(), 1.0)
+
+
+def _tierb_priors(compound: str) -> dict:
+    """Use median circuit priors for the selected compound rank when no circuit context is available."""
+    out = {"circuit_deg_prior": np.nan, "circuit_cliff_life_prior": np.nan}
+    priors = _tierb_bundle.get("priors") if _tierb_bundle else None
+    if priors is None or not len(priors):
+        return out
+    rank = _compound_rank(compound)
+    rows = priors[priors["compound_rank"] == rank]
+    if rows.empty:
+        rows = priors
+    for col in out:
+        if col in rows:
+            out[col] = float(rows[col].median())
+    return out
+
+
+def _predict_tierb(compound: str, tire_age_laps: float, track_temp_c: float) -> dict:
+    """Predict laps remaining with the trained Tier B tyre-life bundle."""
+    import pandas as pd
+    from sidewall.models.tyre_life import lap_predictions
+
+    age = tire_age_laps + config.MODEL_AGE_OFFSET_LAPS
+    row = {
+        "tyre_life": age,
+        "compound_rank": _compound_rank(compound),
+        "fresh_tyre": 1.0 if age <= 1.5 else 0.0,
+        "stint": 1.0,
+        "race_frac": 0.5,
+        "fuel_kg": max(0.0, 100.0 - age * config.FUEL_KG_PER_LAP),
+        "track_temp_bin": round(track_temp_c / 5.0) * 5.0,
+        "era18": 1.0,
+        "slope_so_far": np.nan,
+        "resid_last": np.nan,
+        "resid_mean3": np.nan,
+        "resid_std5": np.nan,
+        "deg_delta_last": np.nan,
+        **_tierb_priors(compound),
+    }
+    pred = lap_predictions(_tierb_bundle, pd.DataFrame([row])).iloc[0]
+    low = float(pred["safe_laps"])
+    mid = float(pred["median_laps"])
+    horizon = float(_tierb_bundle.get("max_horizon", config.MAX_FORECAST_LAPS))
+    high = min(horizon, max(mid, low) + max(3.0, 0.25 * max(mid, low)))
+    return {"low": round(low, 1), "mid": round(mid, 1), "high": round(high, 1)}
+
+
 @lru_cache(maxsize=512)
 def _cached(compound: str, age_key: int, temp_key: int) -> dict:
     """Walk the fallback chain. Cached on quantised inputs; callers get a copy."""
     tire_age_laps = age_key * config.LAPS_CACHE_AGE_STEP
+    if _tierb_bundle is not None:
+        try:
+            return _predict_tierb(compound, tire_age_laps, temp_key)
+        except Exception as e:
+            _warn_once(f"trained Tier B prediction failed for {compound} ({type(e).__name__}: {e}); using legacy")
     if _bundle is not None:
         if _boosters is not None:
             try:

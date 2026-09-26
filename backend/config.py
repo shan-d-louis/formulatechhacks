@@ -83,7 +83,8 @@ TRAIN_AGE_QUANTILE = 0.95  # per compound, ignore tire ages above this quantile 
 CLIFF_DELTA_S = 1.5  # laps remaining = first future lap with predicted delta above this
 QUANTILES = (0.1, 0.5, 0.9)  # low / mid / high model quantiles
 MAX_FORECAST_LAPS = 60  # stop rolling the model forward after this many laps
-MODEL_PATH = "../training/laps_model.joblib"  # trained model (training/train.py), relative to backend/
+TRAINED_LAPS_MODEL_PATH = "../models/weights/tierB_tyre_life.joblib"  # primary Tier B tyre-life model
+MODEL_PATH = "../training/laps_model.joblib"  # legacy fallback model (training/train.py), relative to backend/
 MODEL_AGE_OFFSET_LAPS = 1.0  # model age (FastF1 TyreLife, 1 on a fresh set's first lap) = tire_age_laps + this
 LAPS_CACHE_AGE_STEP = 0.05  # predictions are cached per this much tire age (laps); 10 Hz frames reuse them
 DEFAULT_TRACK_TEMP_C = 35.0  # used if a frame has no track temp
