@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIDEWALL Pit Wall</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><b>SIDEWALL</b><span>AI tyre-safety pit wall</span></div>
+  <span class="badge t1">Track 1 · Safety Diagnosis</span>
+  <span class="badge ollon">Ollon · Data-driven</span>
+  <span class="badge ampere">Ampere · AI</span>
+  <div class="controls">
+    <select id="scenario" class="btn"></select>
+    <button id="play" class="btn primary">▶ Play</button>
+    <select id="speed" class="btn">
+      <option value="1">1×</option><option value="5">5×</option><option value="20" selected>20×</option><option value="60">60×</option>
+    </select>
+    <button id="tts" class="btn">🔈 Radio</button>
+    <button id="qrCrew" class="btn">Crew QR</button>
+    <button id="qrDriver" class="btn" hidden>Driver QR</button>
+    <button id="debris" class="btn" hidden>💥 Debris</button>
+    <button id="resetLive" class="btn" hidden>↺ New tyres</button>
+    <a class="btn" href="/atlas" style="text-decoration:none">Atlas →</a>
+  </div>
+  <input id="scrub" class="scrub" type="range" min="0" max="1000" value="0">
+</header>
+
+<main class="grid">
+  <!-- LEFT: track + telemetry -->
+  <section class="stack">
+    <div class="panel">
+      <h3>Track <span class="badges"><span class="badge ollon">FastF1 position</span></span></h3>
+      <canvas id="map" class="map"></canvas>
+      <div class="strip">
+        <div class="kv"><div class="k">Speed km/h</div><div class="v" id="speed_v">–</div></div>
+        <div class="kv"><div class="k">Gear</div><div class="v" id="gear_v">–</div></div>
+        <div class="kv"><div class="k">Throttle</div><div class="v" id="thr_v">–</div><div class="bar"><i id="thr_b"></i></div></div>
+        <div class="kv"><div class="k">Brake</div><div class="v" id="brk_v">–</div><div class="bar"><i id="brk_b" style="background:var(--now)"></i></div></div>
+      </div>
+      <div class="strip">
+        <div class="kv"><div class="k">Lap</div><div class="v" id="lap_v">–</div></div>
+        <div class="kv"><div class="k">Compound</div><div class="v" id="cmp_v" style="font-size:15px">–</div></div>
+        <div class="kv"><div class="k">Tyre age</div><div class="v" id="age_v">–</div></div>
+        <div class="kv"><div class="k">Lap time</div><div class="v" id="lt_v" style="font-size:16px">–</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Real-time events <span class="badges"><span class="badge t1">detect</span><span class="badge ampere">ML · 1 s early</span></span></h3>
+      <div class="events">
+        <div class="ev" id="ev_lockup"><div class="k">Lock-up</div><div class="v">–</div></div>
+        <div class="ev" id="ev_wheelspin"><div class="k">Wheelspin</div><div class="v">–</div></div>
+        <div class="ev" id="ev_overheat"><div class="k">Overheat</div><div class="v">–</div></div>
+        <div class="ev" id="ev_cold"><div class="k">Cold tyre</div><div class="v">–</div></div>
+      </div>
+      <canvas id="evchart" class="chart" style="margin-top:10px"></canvas>
+    </div>
+  </section>
+
+  <!-- CENTER: tyres -->
+  <section class="stack">
+    <div class="panel">
+      <h3>Tyre health <span class="badges"><span class="badge t1">per tyre</span><span class="badge ampere">virtual TPMS</span></span></h3>
+      <div class="car" id="car"></div>
+      <div class="est">Temperatures and pressures are <b>estimated</b> from speed, throttle, brake and position by the virtual TPMS (trained on Assetto Corsa per-wheel ground truth; F3-calibrated). Pressure follows the gas law from the cold set-up pressure.</div>
+    </div>
+    <div class="panel">
+      <h3>What really happened <span class="badges"><span class="badge ollon">ground truth</span></span></h3>
+      <div class="truth" id="truth">Pick a scenario and press play.</div>
+    </div>
+  </section>
+
+  <!-- RIGHT: pit call + life -->
+  <section class="stack">
+    <div class="panel">
+      <h3>Pit call <span class="badges"><span class="badge t1">→ crew phones</span></span></h3>
+      <div class="call l0" id="call"><div class="level">OK</div><div class="why" id="why">–</div></div>
+      <div class="radio" id="radio"></div>
+    </div>
+    <div class="panel">
+      <h3>Tyre life <span class="badges"><span class="badge ampere">survival + conformal</span><span class="badge ollon">2018–25</span></span></h3>
+      <div class="life">
+        <div class="kv"><div class="k">Safe laps left (90%)</div><div class="big" id="safe">–</div></div>
+        <div class="kv"><div class="k">Median laps to cliff</div><div class="big" id="median">–</div></div>
+        <div class="kv"><div class="k">P(cliff ≤ 3 laps)</div><div class="big" id="pc3" style="font-size:22px">–</div></div>
+        <div class="kv"><div class="k">Failure hazard / lap</div><div class="big" id="fail" style="font-size:22px">–</div></div>
+      </div>
+      <canvas id="lifechart" class="chart" style="margin-top:10px"></canvas>
+    </div>
+    <div class="panel">
+      <h3>Alert log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+</main>
+
+<div class="qr" id="qrbox"><div class="card"><img id="qrimg" alt="QR"><div id="qrurl" class="mono" style="margin-top:8px"></div><button class="btn" style="margin-top:10px;background:#eee" onclick="qrbox.classList.remove('show')">Close</button></div></div>
+
+<script src="/static/pitwall.js"></script>
+</body>
+</html>

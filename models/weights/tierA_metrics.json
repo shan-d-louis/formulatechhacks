@@ -1,0 +1,209 @@
+{
+  "n_rows": 767253,
+  "features": [
+    "speed",
+    "throttle",
+    "brake",
+    "gear",
+    "rpm",
+    "ax",
+    "yaw_rate",
+    "ay",
+    "g_comb",
+    "rpm_ratio_rel",
+    "d_speed",
+    "d_throttle",
+    "d_rpm",
+    "d_rpm_ratio_rel",
+    "ax_mean4",
+    "ax_min4",
+    "ax_max4",
+    "ay_mean4",
+    "ay_min4",
+    "ay_max4",
+    "throttle_mean4",
+    "throttle_min4",
+    "throttle_max4",
+    "rpm_ratio_rel_mean4",
+    "rpm_ratio_rel_min4",
+    "rpm_ratio_rel_max4",
+    "speed_mean4",
+    "speed_min4",
+    "speed_max4",
+    "d_speed_mean4",
+    "d_speed_min4",
+    "d_speed_max4",
+    "brake_frac4",
+    "ax_mean8",
+    "ax_min8",
+    "ax_max8",
+    "ay_mean8",
+    "ay_min8",
+    "ay_max8",
+    "throttle_mean8",
+    "throttle_min8",
+    "throttle_max8",
+    "rpm_ratio_rel_mean8",
+    "rpm_ratio_rel_min8",
+    "rpm_ratio_rel_max8",
+    "speed_mean8",
+    "speed_min8",
+    "speed_max8",
+    "d_speed_mean8",
+    "d_speed_min8",
+    "d_speed_max8",
+    "brake_frac8",
+    "brake_dur",
+    "full_throttle_dur",
+    "since_brake_release",
+    "p_lon",
+    "p_lat",
+    "brake_x_speed",
+    "throttle_x_ay",
+    "p_lat_ewm10",
+    "p_lon_ewm10",
+    "speed_ewm10",
+    "p_lat_ewm60",
+    "p_lon_ewm60",
+    "speed_ewm60",
+    "p_lat_ewm180",
+    "p_lon_ewm180",
+    "speed_ewm180",
+    "tyre_age_s"
+  ],
+  "ahead_s": 1.0,
+  "events": {
+    "lockup": {
+      "leave_session_out": {
+        "positives_frac": 0.029245894118367734,
+        "pr_auc": 0.5457135050471034,
+        "roc_auc": 0.9574807951849621,
+        "threshold_at_p50": 0.6588261515585837,
+        "events": 1057,
+        "detected_frac": 0.8505203405865658,
+        "median_lead_s": 0.5
+      },
+      "leave_track_out": {
+        "positives_frac": 0.029245894118367734,
+        "pr_auc": 0.4018351513810313,
+        "roc_auc": 0.9016862369220819,
+        "threshold_at_p50": 0.5760586580497712,
+        "events": 1057,
+        "detected_frac": 0.6130558183538316,
+        "median_lead_s": 0.25
+      },
+      "external_thulab_gt_car": {
+        "pr_auc": 0.17481106130848822,
+        "roc_auc": 0.8975480355606539,
+        "positives_frac": 0.013690105787181083
+      },
+      "top_features": {
+        "since_brake_release": 4198252.335783005,
+        "ax": 1251115.5354833603,
+        "d_speed": 436475.9085817337,
+        "speed": 372498.59618473053,
+        "speed_ewm60": 320550.6447086334,
+        "tyre_age_s": 319121.552857399,
+        "speed_ewm10": 296974.6183652878,
+        "speed_ewm180": 276487.8153152466
+      }
+    },
+    "wheelspin": {
+      "leave_session_out": {
+        "positives_frac": 0.044282655134616614,
+        "pr_auc": 0.791963356528342,
+        "roc_auc": 0.9767934788387398,
+        "threshold_at_p50": 0.35804109219960245,
+        "events": 1477,
+        "detected_frac": 0.987813134732566,
+        "median_lead_s": 1.75
+      },
+      "leave_track_out": {
+        "positives_frac": 0.044282655134616614,
+        "pr_auc": 0.7218160891037448,
+        "roc_auc": 0.9633951059604681,
+        "threshold_at_p50": 0.24403694967062,
+        "events": 1477,
+        "detected_frac": 0.970886932972241,
+        "median_lead_s": 1.5
+      },
+      "external_thulab_gt_car": {
+        "pr_auc": 0.1591376076807505,
+        "roc_auc": 0.9299236481539588,
+        "positives_frac": 0.008400746733042938
+      },
+      "top_features": {
+        "speed_mean8": 3204806.9569540024,
+        "speed": 1741481.4993915558,
+        "rpm_ratio_rel": 1236679.1752605438,
+        "speed_max4": 913843.407957077,
+        "speed_mean4": 542940.7823104858,
+        "rpm_ratio_rel_max4": 536314.3222999573,
+        "throttle": 388677.01966285706,
+        "speed_ewm180": 285949.39451503754
+      }
+    },
+    "overheat": {
+      "leave_session_out": {
+        "positives_frac": 0.05338265213690921,
+        "pr_auc": 0.42009924052380454,
+        "roc_auc": 0.890505484168353,
+        "threshold_at_p50": 0.6327430649817204,
+        "events": 183,
+        "detected_frac": 0.5300546448087432,
+        "median_lead_s": 2.0
+      },
+      "leave_track_out": {
+        "positives_frac": 0.05338265213690921,
+        "pr_auc": 0.2122589899427008,
+        "roc_auc": 0.7018177414503554,
+        "threshold_at_p50": 0.9999941933720761,
+        "events": 183,
+        "detected_frac": 0.01092896174863388,
+        "median_lead_s": 2.5
+      },
+      "external_thulab_gt_car": {},
+      "top_features": {
+        "tyre_age_s": 2635446.3123755455,
+        "speed_ewm10": 2299190.717089176,
+        "speed_ewm180": 1891145.36780262,
+        "speed_ewm60": 1334811.243786335,
+        "p_lat_ewm180": 1064234.7463994026,
+        "p_lat_ewm60": 697692.197529316,
+        "p_lon_ewm180": 683238.6002879143,
+        "p_lon_ewm60": 606803.3498454094
+      }
+    },
+    "cold": {
+      "leave_session_out": {
+        "positives_frac": 0.0757755264560712,
+        "pr_auc": 0.9178190306714957,
+        "roc_auc": 0.9934667900511427,
+        "threshold_at_p50": 0.0018481443365334443,
+        "events": 756,
+        "detected_frac": 0.9907407407407407,
+        "median_lead_s": 3.0
+      },
+      "leave_track_out": {
+        "positives_frac": 0.0757755264560712,
+        "pr_auc": 0.8698752801110764,
+        "roc_auc": 0.986940681194531,
+        "threshold_at_p50": 0.0033899421868452124,
+        "events": 756,
+        "detected_frac": 0.9761904761904762,
+        "median_lead_s": 3.0
+      },
+      "external_thulab_gt_car": {},
+      "top_features": {
+        "p_lon_ewm180": 5646373.753328562,
+        "tyre_age_s": 4356649.038985729,
+        "speed": 443534.77597236633,
+        "speed_ewm180": 279151.3939034939,
+        "p_lat_ewm180": 257649.8651893139,
+        "throttle_max8": 245709.928647995,
+        "brake_x_speed": 216616.95023298264,
+        "speed_ewm60": 209592.8811762333
+      }
+    }
+  }
+}
