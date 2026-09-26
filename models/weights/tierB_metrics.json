@@ -1,0 +1,172 @@
+{
+  "test_years": [
+    2021
+  ],
+  "features": [
+    "tyre_life",
+    "compound_rank",
+    "fresh_tyre",
+    "stint",
+    "race_frac",
+    "fuel_kg",
+    "track_temp",
+    "air_temp",
+    "humidity",
+    "slope_so_far",
+    "resid_last",
+    "resid_mean3",
+    "resid_std5",
+    "deg_delta_last",
+    "circuit_deg_prior",
+    "circuit_cliff_life_prior"
+  ],
+  "cliff": {
+    "train": {
+      "rows": 55449,
+      "events": 400
+    },
+    "test": {
+      "rows": 13072,
+      "events": 106,
+      "roc_auc": 0.8585378595397541,
+      "pr_auc": 0.08720939290384118,
+      "base_rate": 0.008108935128518973
+    },
+    "top_features": {
+      "slope_so_far": 9743.218943357468,
+      "resid_last": 7163.111314296722,
+      "resid_mean3": 5382.753408908844,
+      "resid_std5": 3724.2656033039093,
+      "tyre_life": 3710.9291409254074,
+      "race_frac": 3422.4804456830025,
+      "track_temp": 3201.401468873024,
+      "humidity": 3068.613896250725
+    }
+  },
+  "failure": {
+    "train": {
+      "rows": 63128,
+      "events": 36
+    },
+    "test": {
+      "rows": 14959,
+      "events": 3,
+      "roc_auc": 0.6984599268966747,
+      "pr_auc": 0.0023146987545086192,
+      "base_rate": 0.00020054816498429038
+    },
+    "top_features": {
+      "resid_last": 348.9518212080002,
+      "humidity": 227.63765332102776,
+      "deg_delta_last": 205.55389910936356,
+      "tyre_life": 191.45855343341827,
+      "resid_std5": 158.7155209183693,
+      "circuit_deg_prior": 133.39177179336548,
+      "air_temp": 111.1006518304348,
+      "slope_so_far": 96.7280807197094
+    }
+  },
+  "cliff_horizon": {
+    "train": {
+      "rows": 280231,
+      "events": 3433
+    },
+    "calib_years": [
+      2020
+    ],
+    "conformal_risk_level": 0.006025210084033613,
+    "test": {
+      "rows": 90468,
+      "events": 1226,
+      "roc_auc": 0.6316705866369989,
+      "pr_auc": 0.02949224672159952,
+      "base_rate": 0.013551753106070655
+    },
+    "coverage_uncalibrated_r0.10": {
+      "stints": 517,
+      "landmarks": 12346,
+      "risk_level": 0.1,
+      "mean_safe90_laps": 24.87088935687672,
+      "violation_rate_safe90": 0.30131863806337333,
+      "violation_n": 5081,
+      "calibration_k5": {
+        "0": {
+          "pred": 0.0,
+          "obs": 0.011,
+          "n": 2059
+        },
+        "1": {
+          "pred": 0.001,
+          "obs": 0.055,
+          "n": 2058
+        },
+        "2": {
+          "pred": 0.004,
+          "obs": 0.037,
+          "n": 2058
+        },
+        "3": {
+          "pred": 0.017,
+          "obs": 0.019,
+          "n": 2058
+        },
+        "4": {
+          "pred": 0.115,
+          "obs": 0.134,
+          "n": 2058
+        }
+      }
+    },
+    "coverage_conformal": {
+      "stints": 517,
+      "landmarks": 12346,
+      "risk_level": 0.006025210084033613,
+      "mean_safe90_laps": 10.814919812084886,
+      "violation_rate_safe90": 0.14330315329378707,
+      "violation_n": 6406,
+      "calibration_k5": {
+        "0": {
+          "pred": 0.0,
+          "obs": 0.011,
+          "n": 2059
+        },
+        "1": {
+          "pred": 0.001,
+          "obs": 0.055,
+          "n": 2058
+        },
+        "2": {
+          "pred": 0.004,
+          "obs": 0.037,
+          "n": 2058
+        },
+        "3": {
+          "pred": 0.017,
+          "obs": 0.019,
+          "n": 2058
+        },
+        "4": {
+          "pred": 0.115,
+          "obs": 0.134,
+          "n": 2058
+        }
+      }
+    }
+  },
+  "alert_thresholds": {
+    "p_cliff_3": {
+      "advise": 0.15397958032462083,
+      "box": 0.38614609238880526
+    },
+    "failure_hazard": {
+      "advise": 0.001543266454877213,
+      "box": 0.0031582047063700935
+    }
+  },
+  "alert_rates_test": {
+    "box_rate_all_laps": 0.008021390374331552,
+    "advise_rate_all_laps": 0.034759358288770054,
+    "failures": 3,
+    "box_within_3_laps_of_failure": 0.3333333333333333
+  }
+}
