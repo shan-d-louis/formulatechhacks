@@ -20,6 +20,20 @@ from sidewall import config
 
 log = logging.getLogger("ingest_fastf1")
 
+# FastF1 issues requests without a timeout, so one stalled connection can hang the whole download.
+# Give every request a timeout; a stalled race then fails and is retried instead.
+import requests  # noqa: E402
+
+_orig_request = requests.Session.request
+
+
+def _request_with_timeout(self, method, url, **kwargs):
+    kwargs.setdefault("timeout", 60)
+    return _orig_request(self, method, url, **kwargs)
+
+
+requests.Session.request = _request_with_timeout
+
 
 def race_key(year: int, rnd: int) -> str:
     return f"{year}_{rnd:02d}"

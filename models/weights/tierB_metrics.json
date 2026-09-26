@@ -1,6 +1,33 @@
 {
+  "split": {
+    "calib": {
+      "races": 12,
+      "seasons": [
+        2024
+      ]
+    },
+    "test": {
+      "races": 23,
+      "seasons": [
+        2025
+      ]
+    },
+    "train": {
+      "races": 92,
+      "seasons": [
+        2018,
+        2019,
+        2020,
+        2021,
+        2024
+      ]
+    }
+  },
+  "calib_rounds": {
+    "2024": 13
+  },
   "test_years": [
-    2021
+    2025
   ],
   "features": [
     "tyre_life",
@@ -9,9 +36,8 @@
     "stint",
     "race_frac",
     "fuel_kg",
-    "track_temp",
-    "air_temp",
-    "humidity",
+    "track_temp_bin",
+    "era18",
     "slope_so_far",
     "resid_last",
     "resid_mean3",
@@ -20,153 +46,214 @@
     "circuit_deg_prior",
     "circuit_cliff_life_prior"
   ],
+  "fail_features": [
+    "tyre_life",
+    "compound_rank",
+    "era18",
+    "race_frac",
+    "track_temp_bin",
+    "slope_so_far",
+    "resid_last",
+    "deg_delta_last",
+    "circuit_deg_prior"
+  ],
+  "cliff_params": {
+    "objective": "binary",
+    "learning_rate": 0.03,
+    "feature_fraction": 0.7,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 1,
+    "lambda_l2": 10.0,
+    "verbose": -1,
+    "num_leaves": 31,
+    "min_child_samples": 600,
+    "n_estimators": 150
+  },
   "cliff": {
-    "train": {
-      "rows": 55449,
-      "events": 400
+    "train_in_sample": {
+      "rows": 91965,
+      "events": 531,
+      "roc_auc": 0.9151218004717222,
+      "pr_auc": 0.09463726133571414,
+      "base_rate": 0.005773935736421465,
+      "mean_pred": 0.005914922673272439
+    },
+    "train_cv_grouped_by_race_auc": 0.8622351454191258,
+    "calib": {
+      "rows": 11158,
+      "events": 112,
+      "roc_auc": 0.8559974845451488,
+      "pr_auc": 0.04967052139254702,
+      "base_rate": 0.010037641154328732,
+      "mean_pred": 0.0075230430564065965
     },
     "test": {
-      "rows": 13072,
-      "events": 106,
-      "roc_auc": 0.8585378595397541,
-      "pr_auc": 0.08720939290384118,
-      "base_rate": 0.008108935128518973
+      "rows": 22409,
+      "events": 160,
+      "roc_auc": 0.8656934019506495,
+      "pr_auc": 0.042879470866054384,
+      "base_rate": 0.007139988397518854,
+      "mean_pred": 0.007611881558702979
     },
-    "top_features": {
-      "slope_so_far": 9743.218943357468,
-      "resid_last": 7163.111314296722,
-      "resid_mean3": 5382.753408908844,
-      "resid_std5": 3724.2656033039093,
-      "tyre_life": 3710.9291409254074,
-      "race_frac": 3422.4804456830025,
-      "track_temp": 3201.401468873024,
-      "humidity": 3068.613896250725
-    }
+    "overfit_gap_auc": 0.054
+  },
+  "failure_model_choice": {
+    "lgbm_cv_auc": 0.6784503662136323,
+    "logistic_cv_auc": 0.626059938527225,
+    "chosen": "lgbm"
   },
   "failure": {
-    "train": {
-      "rows": 63128,
-      "events": 36
+    "train_in_sample": {
+      "rows": 95435,
+      "events": 53,
+      "roc_auc": 0.8432255324468878,
+      "pr_auc": 0.05238313735020438,
+      "base_rate": 0.0005553518101325509,
+      "mean_pred": 0.0005149507107776665
+    },
+    "train_cv_grouped_by_race_auc": 0.6784503662136323,
+    "calib": {
+      "rows": 11970,
+      "events": 1,
+      "roc_auc": 0.8835742334363773,
+      "pr_auc": 0.0007168458781362007,
+      "base_rate": 8.35421888053467e-05,
+      "mean_pred": 0.0005141592172869466
     },
     "test": {
-      "rows": 14959,
-      "events": 3,
-      "roc_auc": 0.6984599268966747,
-      "pr_auc": 0.0023146987545086192,
-      "base_rate": 0.00020054816498429038
+      "rows": 23500,
+      "events": 5,
+      "roc_auc": 0.8226175782081294,
+      "pr_auc": 0.0011288743268324161,
+      "base_rate": 0.0002127659574468085,
+      "mean_pred": 0.0005029685197375054
     },
-    "top_features": {
-      "resid_last": 348.9518212080002,
-      "humidity": 227.63765332102776,
-      "deg_delta_last": 205.55389910936356,
-      "tyre_life": 191.45855343341827,
-      "resid_std5": 158.7155209183693,
-      "circuit_deg_prior": 133.39177179336548,
-      "air_temp": 111.1006518304348,
-      "slope_so_far": 96.7280807197094
-    }
+    "overfit_gap_auc": -0.01
   },
   "cliff_horizon": {
-    "train": {
-      "rows": 280231,
-      "events": 3433
+    "train_in_sample": {
+      "rows": 406414,
+      "events": 3769,
+      "roc_auc": 0.77359541782418,
+      "pr_auc": 0.04103845103077212,
+      "base_rate": 0.009273794701954165,
+      "mean_pred": 0.009267099760712414
     },
-    "calib_years": [
-      2020
-    ],
-    "conformal_risk_level": 0.006025210084033613,
+    "train_cv_grouped_by_race_auc": 0.6830659346699255,
+    "calib": {
+      "rows": 45673,
+      "events": 725,
+      "roc_auc": 0.6961449705867009,
+      "pr_auc": 0.0363126925023345,
+      "base_rate": 0.01587371094519738,
+      "mean_pred": 0.010002783385511863
+    },
     "test": {
-      "rows": 90468,
-      "events": 1226,
-      "roc_auc": 0.6316705866369989,
-      "pr_auc": 0.02949224672159952,
-      "base_rate": 0.013551753106070655
+      "rows": 91972,
+      "events": 1102,
+      "roc_auc": 0.6755273683291801,
+      "pr_auc": 0.021626098787681965,
+      "base_rate": 0.011981907537076501,
+      "mean_pred": 0.010506078515524389
     },
+    "overfit_gap_auc": 0.088,
+    "conformal_risk_level": 0.05878991596638655,
     "coverage_uncalibrated_r0.10": {
-      "stints": 517,
-      "landmarks": 12346,
+      "stints": 920,
+      "landmarks": 20110,
       "risk_level": 0.1,
-      "mean_safe90_laps": 24.87088935687672,
-      "violation_rate_safe90": 0.30131863806337333,
-      "violation_n": 5081,
+      "mean_safe_laps": 12.772053704624565,
+      "violation_rate": 0.15141430948419302,
+      "violation_n": 11419,
       "calibration_k5": {
         "0": {
-          "pred": 0.0,
-          "obs": 0.011,
-          "n": 2059
+          "pred": 0.009,
+          "obs": 0.002,
+          "n": 3262
         },
         "1": {
-          "pred": 0.001,
-          "obs": 0.055,
-          "n": 2058
+          "pred": 0.015,
+          "obs": 0.012,
+          "n": 3262
         },
         "2": {
-          "pred": 0.004,
-          "obs": 0.037,
-          "n": 2058
+          "pred": 0.03,
+          "obs": 0.033,
+          "n": 3262
         },
         "3": {
-          "pred": 0.017,
-          "obs": 0.019,
-          "n": 2058
+          "pred": 0.046,
+          "obs": 0.063,
+          "n": 3262
         },
         "4": {
-          "pred": 0.115,
+          "pred": 0.104,
           "obs": 0.134,
-          "n": 2058
+          "n": 3262
         }
       }
     },
     "coverage_conformal": {
-      "stints": 517,
-      "landmarks": 12346,
-      "risk_level": 0.006025210084033613,
-      "mean_safe90_laps": 10.814919812084886,
-      "violation_rate_safe90": 0.14330315329378707,
-      "violation_n": 6406,
+      "stints": 920,
+      "landmarks": 20110,
+      "risk_level": 0.05878991596638655,
+      "mean_safe_laps": 8.683192441571357,
+      "violation_rate": 0.07273480091091022,
+      "violation_n": 14491,
       "calibration_k5": {
         "0": {
-          "pred": 0.0,
-          "obs": 0.011,
-          "n": 2059
+          "pred": 0.009,
+          "obs": 0.002,
+          "n": 3262
         },
         "1": {
-          "pred": 0.001,
-          "obs": 0.055,
-          "n": 2058
+          "pred": 0.015,
+          "obs": 0.012,
+          "n": 3262
         },
         "2": {
-          "pred": 0.004,
-          "obs": 0.037,
-          "n": 2058
+          "pred": 0.03,
+          "obs": 0.033,
+          "n": 3262
         },
         "3": {
-          "pred": 0.017,
-          "obs": 0.019,
-          "n": 2058
+          "pred": 0.046,
+          "obs": 0.063,
+          "n": 3262
         },
         "4": {
-          "pred": 0.115,
+          "pred": 0.104,
           "obs": 0.134,
-          "n": 2058
+          "n": 3262
         }
       }
     }
   },
+  "cliff_horizon_params": {
+    "objective": "binary",
+    "learning_rate": 0.03,
+    "feature_fraction": 0.7,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 1,
+    "lambda_l2": 10.0,
+    "verbose": -1,
+    "num_leaves": 7,
+    "min_child_samples": 600,
+    "n_estimators": 200
+  },
   "alert_thresholds": {
     "p_cliff_3": {
-      "advise": 0.15397958032462083,
-      "box": 0.38614609238880526
+      "advise": 0.07245728663934417,
+      "box": 0.12124966459090435
     },
     "failure_hazard": {
-      "advise": 0.001543266454877213,
-      "box": 0.0031582047063700935
+      "advise": 0.0014856001653761571,
+      "box": 0.002963505996150368
     }
   },
   "alert_rates_test": {
-    "box_rate_all_laps": 0.008021390374331552,
-    "advise_rate_all_laps": 0.034759358288770054,
-    "failures": 3,
-    "box_within_3_laps_of_failure": 0.3333333333333333
+    "box_rate_all_laps": 0.004342802502091717,
+    "failures": 5,
+    "box_within_3_laps_of_failure": 0.0
   }
 }

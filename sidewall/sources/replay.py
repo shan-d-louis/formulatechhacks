@@ -12,7 +12,7 @@ from sidewall import config
 from sidewall.data.build_stints import OUT as STINTS
 from sidewall.engine.monitor import TyreMonitor
 from sidewall.features import stream_from_fastf1
-from sidewall.models.tyre_life import lap_predictions, prepare_laps
+from sidewall.models.tyre_life import bundle_excluding, lap_predictions, prepare_laps
 
 REPLAY_CACHE = config.PROCESSED / "replays"
 REPLAY_CACHE.mkdir(parents=True, exist_ok=True)
@@ -71,6 +71,9 @@ def build_replay(sc: Scenario, bundles: dict) -> dict:
 
     # Tier B per-lap predictions for this driver's whole race (causal features), then keep the window.
     life = bundles.get("life")
+    if life is not None and "hyperparams" in life:
+        # Use models that never saw this season: the replay is an honest out-of-sample prediction.
+        life = bundle_excluding(life, [sc.year])
     stints = pd.read_parquet(STINTS)
     S = stints[(stints["year"] == sc.year) & (stints["round"] == sc.round) & (stints["driver"] == sc.driver)]
     if life is not None and len(S):

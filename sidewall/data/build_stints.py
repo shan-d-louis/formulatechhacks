@@ -34,7 +34,8 @@ def _load(dir_):
 
 def _clean_mask(L: pd.DataFrame) -> pd.Series:
     ts = L["track_status"].fillna("").astype(str)
-    neutral = ts.str.contains("[4567]")
+    # 2 = yellow flag (drivers must slow), 4 = SC, 5 = red, 6/7 = VSC: none of these reflect tyre pace.
+    neutral = ts.str.contains("[24567]")
     return (
         L["lap_time_s"].notna()
         & ~L["pit_in"] & ~L["pit_out"]
@@ -126,6 +127,10 @@ def build() -> pd.DataFrame:
     L["failure"] = L["official_failure"] | L["suspected_failure"]
 
     L = L.groupby(["year", "round", "driver", "stint"], group_keys=False).apply(_stint_trend)
+    # A "cliff" that three or more drivers hit on the same lap is a race-wide effect (traffic, weather,
+    # debris), not their tyres: drop those labels.
+    shared = L["cliff"].groupby([L["year"], L["round"], L["lap"]]).transform("sum")
+    L["cliff"] = L["cliff"] & (shared < 3)
     log.info("laps %d, usable stints %d, cliffs %d, failures %d (official %d)",
              len(L), L.groupby(["year", "round", "driver", "stint"])["stint_usable"].first().sum(),
              int(L["cliff"].sum()), int(L["failure"].sum()), int(L["official_failure"].sum()))

@@ -139,11 +139,11 @@ function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
       ["Wheelspin ROC-AUC · unseen drivers / tracks / other car", A.wheelspin ? `${f(A.wheelspin.leave_session_out.roc_auc)} / ${f(A.wheelspin.leave_track_out.roc_auc)} / ${f(A.wheelspin.external_thulab_gt_car.roc_auc)}` : "–"],
       ["Wheelspin caught · median warning", A.wheelspin ? `${f(100 * A.wheelspin.leave_session_out.detected_frac, 0)} % · ${f(A.wheelspin.leave_session_out.median_lead_s)} s early` : "–"],
     ]),
-    card("Tyre life (Tier B, real F1)", [
-      ["Cliff hazard ROC-AUC (held-out seasons)", B.cliff && B.cliff.test ? f(B.cliff.test.roc_auc) : "–"],
-      ["Safe-laps bound breached (target ≤ 10 %)", B.cliff_horizon && B.cliff_horizon.coverage_conformal ? `${f(100 * B.cliff_horizon.coverage_conformal.violation_rate_safe90, 1)} %` : "–"],
-      ["Mean safe-lap bound", B.cliff_horizon && B.cliff_horizon.coverage_conformal ? `${f(B.cliff_horizon.coverage_conformal.mean_safe90_laps, 1)} laps` : "–"],
-      ["Failure hazard ROC-AUC", B.failure && B.failure.test ? f(B.failure.test.roc_auc) : "–"],
+    card("Tyre life (Tier B, real F1, tested on unseen 2025)", [
+      ["Cliff hazard ROC-AUC · train / CV / 2025", B.cliff && B.cliff.test ? `${f(B.cliff.train_in_sample.roc_auc)} / ${f(B.cliff.train_cv_grouped_by_race_auc)} / ${f(B.cliff.test.roc_auc)}` : "–"],
+      ["Safe-laps bound breached on 2025 (target ≤ 10 %)", B.cliff_horizon && B.cliff_horizon.coverage_conformal ? `${f(100 * B.cliff_horizon.coverage_conformal.violation_rate, 1)} %` : "–"],
+      ["Mean safe-lap bound", B.cliff_horizon && B.cliff_horizon.coverage_conformal ? `${f(B.cliff_horizon.coverage_conformal.mean_safe_laps, 1)} laps` : "–"],
+      ["Failure hazard ROC-AUC on 2025 (few failures)", B.failure && B.failure.test ? `${f(B.failure.test.roc_auc)} (${B.failure.test.events} events)` : "–"],
     ]),
     card("Virtual TPMS (twin)", [
       ["Core temp error, unseen track (FL/FR/RL/RR)", T.leave_track_out ? ["fl", "fr", "rl", "rr"].map((w) => f(T.leave_track_out["core_" + w]?.mae_c, 1)).join(" / ") + " °C" : "–"],
