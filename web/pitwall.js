@@ -14,7 +14,7 @@ const WINDOW = [85, 115];
 const params = new URLSearchParams(location.search);
 const MODE = params.get("mode") === "live" ? "live" : "replay";
 let data = null, frames = [], idx = 0, playing = false, simT = 0, lastTs = null;
-let liveState = null, liveFrame = null, onboardDismissed = false, drivers = 0;
+let liveState = null, liveFrame = null, drivers = 0;
 let ttsOn = false, lastLevel = -1, lastRadio = "", prevOn = {};
 let ws = null, pins = [];
 
@@ -61,22 +61,21 @@ function tile(w, t, sensorVals) {
   if (t.flags.slow_puncture) flags.push("LOSING AIR");
   if (t.flags.flat_spot) flags.push("FLAT SPOT");
   const h = t.health;
-  const cls = h < 45 || flags.length ? "alarm" : h < 70 ? "warn" : "";
   const measured = t.measured || !!sensorVals;
   const est = measured && t.est_surface != null
     ? `<div class="row"><span>AI estimate</span><b style="color:var(--ampere)">${t.est_surface.toFixed(0)}° / ${t.est_core.toFixed(0)}°</b></div>` : "";
   const comps = Object.entries(t.components || {}).map(([k, v]) =>
     `<div class="comp"><span>${k.replace("_", " ")}</span><div class="bar"><i style="width:${Math.round(100 * v)}%;background:${v > .6 ? "#ff3040" : v > .3 ? "#ffc233" : "#3ab8ff"}"></i></div></div>`).join("");
   const pos = Math.max(0, Math.min(100, (surf - 50) / 100 * 100));
-  return `<div class="tyre ${cls}">
+  return `<div class="tyre">
     <div class="head"><span class="name">${WNAME[w]}</span><span class="health" title="Tyre health 0-100: combines cliff, failure, temperature, pressure, flat-spot and abuse risks">health ${Math.round(h)}</span></div>
     <div class="temp"><span class="big" style="color:${tempColor(surf)}">${surf.toFixed(0)}</span><span class="unit">°C surface</span></div>
     <div class="scale" title="Grip window ${WINDOW[0]}-${WINDOW[1]}°C"><i style="left:${pos}%"></i></div>
     <div class="row"><span>Core</span><b>${core.toFixed(0)}°C</b></div>
     <div class="row"><span title="Pressure in psi. In brackets: difference from the operating (hot) target of ${target.toFixed(1)} psi">Pressure</span><b>${psi.toFixed(1)} <span style="color:${dCol}">(${dTxt})</span></b></div>
     ${est}
-    <div class="status" style="color:${flags.length ? "#ff3040" : sCol}">${flags.length ? flags.join(" · ") : status}</div>
-    <details><summary>why this health score</summary>${comps}</details>
+    ${MODE === "live" ? "" : `<div class="status" style="color:${flags.length ? "#ff3040" : sCol}">${flags.length ? flags.join(" · ") : status}</div>
+    <details><summary>why this health score</summary>${comps}</details>`}
   </div>`;
 }
 function renderTyres(frame) {
@@ -85,8 +84,8 @@ function renderTyres(frame) {
   const measured = MODE === "live";
   $("tyreSource").className = `tag ${measured ? "sensor" : "est"}`;
   $("tyreSource").textContent = measured ? "tyre sensors" : "AI estimate";
-  $("tyreNote").textContent = measured
-    ? "Measured by the car's tyre sensors (infrared tread + tyre-pressure sensor). Purple: what the AI would estimate from telemetry alone. Pressure in brackets: difference from the operating target."
+  $("tyreNote").hidden = measured;
+  $("tyreNote").textContent = measured ? ""
     : "Public F1 data has no tyre sensors: temperatures and pressures are AI estimates from speed, throttle, brake and position (virtual tyre-pressure sensor). Pressure in brackets: difference from the operating target.";
 }
 
@@ -121,7 +120,6 @@ function renderRisk(frame) {
     el.innerHTML = `
       <div class="top"><span class="name">${name} ${e.on ? `<span class="flash">HAPPENING · ${src}</span>` : ""}</span>
         <span class="pct" style="color:${(e.p || 0) > .3 ? "#ff3040" : (e.p || 0) > .1 ? "#ffc233" : "#e8ebf0"}">${pct(e.p)}</span></div>
-      <div class="sub">average over the last few corners: <b>${pct(e.p_avg)}</b></div>
       ${gripHtml}
       <div class="stackbar">${bar}</div>
       <div class="causes">${keys || `<div class="muted" style="font-size:12px">${meaningful
@@ -317,14 +315,6 @@ function renderLiveState() {
   const level = liveFrame ? liveFrame.call.level : 0;
   renderMap(s.x, s.y, level);
   if (liveFrame) renderTyres(liveFrame);
-  if (s.truth) {
-    const tr = s.truth, lf = liveFrame ? liveFrame.events : {};
-    const row = (n, a, b) => `<tr><td>${n}</td><td style="color:${a ? "#ff6b78" : "#8e97a8"}">${a ? "YES" : "no"}</td><td style="color:${b ? "#ff6b78" : "#8e97a8"}">${b ? "detected" : "–"}</td></tr>`;
-    $("truth").innerHTML = `<table class="mono" style="width:100%;font-size:12px;border-collapse:collapse">
-      <tr class="muted"><td></td><td>physics truth</td><td>SIDEWALL</td></tr>
-      ${row("Lock-up", tr.lockup, lf.lockup && lf.lockup.on)}${row("Wheelspin", tr.wheelspin, lf.wheelspin && lf.wheelspin.on)}${row("Over the limit", tr.slide || tr.off, false)}</table>
-      <div class="muted" style="font-size:12px;margin-top:6px">The simulator knows exactly what the tyres are doing; SIDEWALL only sees what a real car's sensors would.</div>`;
-  }
 }
 function onLiveFrame(f) {
   liveFrame = f;
@@ -334,7 +324,7 @@ function onLiveFrame(f) {
   if (liveState) renderTyres(f);
 }
 async function startLive() {
-  $("liveControls").hidden = false; $("scenario").hidden = true; $("mapSource").textContent = "simulator";
+  $("liveControls").hidden = false; $("scenario").hidden = true; $("truthPanel").hidden = true; $("mapSource").textContent = "simulator";
   const r = await (await fetch("/api/live/start", { method: "POST" })).json();
   data = { track: r.track, laps: [], scenario: { title: r.circuit } };
   fitMap();
@@ -342,9 +332,7 @@ async function startLive() {
   $("qrDriverImg").src = "/api/qr?path=/driver";
   $("driverUrl").textContent = `(${lan.base}/driver)`;
   $("liveHint").textContent = `${r.circuit}: racing line and grip limits from a real F1 lap.`;
-  updateOnboard();
 }
-function updateOnboard() { $("onboard").hidden = MODE !== "live" || onboardDismissed || drivers > 0; }
 
 // ---------------------------------------------------------------- wiring
 function connect() {
@@ -354,9 +342,9 @@ function connect() {
     if (msg.type === "state" && MODE === "live") { liveState = msg; renderLiveState(); }
     else if (msg.type === "live" && MODE === "live") onLiveFrame(msg.frame);
     else if (msg.type === "presence") {
+      if (msg.driver > drivers) closeOnboard();   // a phone just joined as the driver
       drivers = msg.driver;
       $("dotDriver").className = `dot${msg.driver ? " live" : ""}`; $("dotCrew").className = `dot${msg.crew ? " live" : ""}`;
-      updateOnboard();
     } else if (msg.type === "notice") { toast(msg.text); logLine(liveState ? liveState.t : 0, msg.text, "#8e97a8"); }
     else if (msg.type === "crew_ack") toast("✔ Pit crew acknowledged the call");
   };
@@ -369,8 +357,11 @@ async function showQr(path) {
 }
 $("qrClose").onclick = () => $("qrbox").hidden = true;
 $("qrCrew").onclick = () => showQr("/crew");
-$("qrDriver").onclick = () => showQr("/driver");
-$("skipOnboard").onclick = () => { onboardDismissed = true; updateOnboard(); };
+$("qrDriver").onclick = () => { $("onboard").hidden = false; };
+function closeOnboard() { $("onboard").hidden = true; }
+$("skipOnboard").onclick = closeOnboard;
+$("onboard").onclick = (e) => { if (e.target === e.currentTarget) closeOnboard(); };
+addEventListener("keydown", (e) => { if (e.key === "Escape") closeOnboard(); });
 $("tts").onclick = () => { ttsOn = !ttsOn; $("tts").classList.toggle("on", ttsOn); $("tts").textContent = ttsOn ? "🔊 Radio on" : "🔈 Radio off"; };
 $("debris").onclick = async () => { const r = await (await fetch("/api/live/debris", { method: "POST" })).json(); if (r.ok) { toast(`💥 ${WNAME[r.wheel].toLowerCase()} picked up a cut: watch the air-loss detector`); logLine(liveState ? liveState.t : 0, `💥 debris: ${WNAME[r.wheel].toLowerCase()} cut (what-if)`, "#ffc233"); } };
 $("newTyres").onclick = async () => { await fetch("/api/live/reset", { method: "POST" }); pins = []; lastLevel = -1; $("log").innerHTML = ""; toast("Fresh tyres fitted at blanket temperature (70°C)"); };
