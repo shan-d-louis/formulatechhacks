@@ -46,6 +46,20 @@ TEST_YEARS = (2025,)
 CALIB_ROUNDS = {2024: 13}          # year -> first round of that year used for calibration
 
 
+def assert_no_overlap(L: pd.DataFrame) -> None:
+    """Raise if any race or stint falls in more than one of train / calib / test, or the parts are out of
+    time order (every calibration race after every training race, every test race after both)."""
+    part = split_of(L)
+    for key in (["year", "round"], KEY):
+        n = part.groupby([L[k] for k in key]).nunique()
+        if (n > 1).any():
+            raise ValueError(f"split overlap on {key}: {n[n > 1].index[:3].tolist()}")
+    order = pd.DataFrame({"y": L["year"], "r": L["round"], "p": part.map({"train": 0, "calib": 1, "test": 2})})
+    order = order.drop_duplicates(["y", "r"]).sort_values(["y", "r"])["p"]
+    if not order.is_monotonic_increasing:
+        raise ValueError("split overlap in time: a later race is in an earlier split")
+
+
 def split_of(df: pd.DataFrame) -> pd.Series:
     """'train' / 'calib' / 'test' for every row, by season and round."""
     part = pd.Series("train", index=df.index)
@@ -361,6 +375,7 @@ def main():
 
     races = L.groupby(["year", "round"]).size().reset_index()
     races["part"] = split_of(races)
+    assert_no_overlap(L)
     metrics = {"split": {k: {"races": int(len(g)), "seasons": sorted(int(y) for y in g["year"].unique())}
                          for k, g in races.groupby("part")},
                "calib_rounds": CALIB_ROUNDS, "test_years": TEST_YEARS,

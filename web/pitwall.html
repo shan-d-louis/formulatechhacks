@@ -7,97 +7,143 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header class="top">
-  <div class="brand"><b>SIDEWALL</b><span>AI tyre-safety pit wall</span></div>
-  <span class="badge t1">Track 1 · Safety Diagnosis</span>
-  <span class="badge ollon">Ollon · Data-driven</span>
-  <span class="badge ampere">Ampere · AI</span>
-  <div class="controls">
-    <select id="scenario" class="btn"></select>
-    <button id="play" class="btn primary">▶ Play</button>
-    <select id="speed" class="btn">
-      <option value="1">1×</option><option value="5">5×</option><option value="20" selected>20×</option><option value="60">60×</option>
-    </select>
-    <button id="tts" class="btn">🔈 Radio</button>
-    <button id="qrCrew" class="btn">Crew QR</button>
-    <button id="qrDriver" class="btn" hidden>Driver QR</button>
-    <button id="debris" class="btn" hidden>💥 Debris</button>
-    <button id="resetLive" class="btn" hidden>↺ New tyres</button>
-    <a class="btn" href="/atlas" style="text-decoration:none">Atlas →</a>
+<header class="topbar">
+  <a class="brand" href="/"><b>SIDEWALL</b><span>pit wall</span></a>
+  <nav class="tabs">
+    <a id="tabReplay" href="/pitwall?mode=replay">Replay a real race</a>
+    <a id="tabLive" href="/pitwall?mode=live">Drive it yourself</a>
+    <a href="/atlas">Explore the data</a>
+  </nav>
+  <div class="right">
+    <select id="scenario" class="btn small" title="Which real race to replay"></select>
+    <span class="conn" title="Phones connected as the driver"><span class="dot" id="dotDriver"></span>Driver</span>
+    <span class="conn" title="Phones connected as the pit crew"><span class="dot" id="dotCrew"></span>Crew</span>
+    <button id="tts" class="btn small" title="Read the radio calls out loud">🔈 Radio off</button>
+    <button id="qrCrew" class="btn small" title="Show a QR code for the pit-crew phone">Crew phone</button>
   </div>
-  <input id="scrub" class="scrub" type="range" min="0" max="1000" value="0">
 </header>
 
-<main class="grid">
-  <!-- LEFT: track + telemetry -->
-  <section class="stack">
-    <div class="panel">
-      <h3>Track <span class="badges"><span class="badge ollon">FastF1 position</span></span></h3>
-      <canvas id="map" class="map"></canvas>
-      <div class="strip">
-        <div class="kv"><div class="k">Speed km/h</div><div class="v" id="speed_v">–</div></div>
-        <div class="kv"><div class="k">Gear</div><div class="v" id="gear_v">–</div></div>
-        <div class="kv"><div class="k">Throttle</div><div class="v" id="thr_v">–</div><div class="bar"><i id="thr_b"></i></div></div>
-        <div class="kv"><div class="k">Brake</div><div class="v" id="brk_v">–</div><div class="bar"><i id="brk_b" style="background:var(--now)"></i></div></div>
-      </div>
-      <div class="strip">
-        <div class="kv"><div class="k">Lap</div><div class="v" id="lap_v">–</div></div>
-        <div class="kv"><div class="k">Compound</div><div class="v" id="cmp_v" style="font-size:15px">–</div></div>
-        <div class="kv"><div class="k">Tyre age</div><div class="v" id="age_v">–</div></div>
-        <div class="kv"><div class="k">Lap time</div><div class="v" id="lt_v" style="font-size:16px">–</div></div>
-      </div>
+<main class="wall">
+  <!-- 1. The pit call: the one thing to read -->
+  <section class="banner l0" id="banner">
+    <div class="call" id="callText">OK</div>
+    <div>
+      <div class="why" id="callWhy">All four tyres inside their windows.</div>
+      <div class="radio" id="callRadio"></div>
     </div>
-    <div class="panel">
-      <h3>Real-time events <span class="badges"><span class="badge t1">detect</span><span class="badge ampere">ML · 1 s early</span></span></h3>
-      <div class="events">
-        <div class="ev" id="ev_lockup"><div class="k">Lock-up</div><div class="v">–</div></div>
-        <div class="ev" id="ev_wheelspin"><div class="k">Wheelspin</div><div class="v">–</div></div>
-        <div class="ev" id="ev_overheat"><div class="k">Overheat</div><div class="v">–</div></div>
-        <div class="ev" id="ev_cold"><div class="k">Cold tyre</div><div class="v">–</div></div>
+    <div class="muted mono" id="clock">–</div>
+  </section>
+
+  <!-- Replay timeline -->
+  <section class="timeline" id="timeline" hidden>
+    <div class="controls">
+      <button id="play" class="btn primary">▶ Play</button>
+      <select id="speedSel" class="btn small" title="Playback speed">
+        <option value="5">5×</option><option value="20" selected>20×</option><option value="60">60×</option>
+      </select>
+      <span class="muted mono" id="tlLabel"></span>
+      <div class="keymoments" id="keys"></div>
+    </div>
+    <div class="track-bar" id="bar"><div class="rail"></div><div class="fill" id="fill"></div></div>
+  </section>
+
+  <!-- Live controls -->
+  <section class="timeline" id="liveControls" hidden>
+    <div class="controls">
+      <button id="qrDriver" class="btn">📱 Driver phone</button>
+      <button id="debris" class="btn" title="What-if: a tyre picks up a cut and starts losing air">💥 Debris (slow puncture)</button>
+      <button id="newTyres" class="btn" title="Fresh tyres on the blankets and a new stint">↺ New tyres</button>
+      <span class="muted" style="font-size:13px" id="liveHint"></span>
+    </div>
+  </section>
+  <!-- Live mode: how to join -->
+  <section class="panel" id="onboard" hidden>
+    <h3>Drive it yourself <span class="right"><button class="btn small" id="skipOnboard">Just watch the autopilot</button></span></h3>
+    <div class="onboard">
+      <img id="qrDriverImg" alt="QR code to open the driver controls">
+      <div>
+        <ol class="steps">
+          <li>Scan the code with a phone on the same Wi-Fi <span class="muted" id="driverUrl"></span></li>
+          <li>Turn the phone sideways and tap <b>Take the wheel</b>. Left side brakes, right side accelerates. Steering is automatic.</li>
+          <li>Brake too late or floor it out of a slow corner. Watch the <b>risk panel</b> predict it, explain why, and tell you how to avoid it.</li>
+        </ol>
+        <p class="muted" style="margin:10px 0 0;font-size:13px">Optional: a second phone can be the pit crew (“Crew phone” at the top) and gets the box calls.</p>
       </div>
-      <canvas id="evchart" class="chart" style="margin-top:10px"></canvas>
     </div>
   </section>
 
-  <!-- CENTER: tyres -->
-  <section class="stack">
-    <div class="panel">
-      <h3>Tyre health <span class="badges"><span class="badge t1">per tyre</span><span class="badge ampere">virtual TPMS</span></span></h3>
-      <div class="car" id="car"></div>
-      <div class="est">Temperatures and pressures are <b>estimated</b> from speed, throttle, brake and position by the virtual TPMS (trained on Assetto Corsa per-wheel ground truth; F3-calibrated). Pressure follows the gas law from the cold set-up pressure.</div>
+  <section class="grid3">
+    <!-- LEFT: where is the car -->
+    <div class="stack">
+      <div class="panel">
+        <h3>Track <span class="right"><span class="badge ollon" id="mapSource">FastF1 position</span></span></h3>
+        <canvas id="map" class="map"></canvas>
+        <div class="legend"><span><i style="background:#ff3040"></i>lock-up</span><span><i style="background:#2fd27a"></i>wheelspin</span><span><i style="background:#ffc233"></i>pit call raised</span></div>
+        <div class="kvs">
+          <div class="kv"><div class="k">Speed</div><div class="v"><span id="speed">–</span><span class="muted" style="font-size:12px"> km/h</span></div></div>
+          <div class="kv"><div class="k">Gear</div><div class="v" id="gear">–</div></div>
+          <div class="kv"><div class="k">Lap</div><div class="v" id="lap">–</div></div>
+          <div class="kv"><div class="k" id="ageLabel">Tyre age</div><div class="v" id="age">–</div></div>
+        </div>
+        <div class="pedals">
+          <div class="pedal"><div class="k muted" style="font-size:11px">Brake <span id="brkPct"></span></div><div class="bar"><i id="brkBar" style="background:var(--now)"></i></div></div>
+          <div class="pedal"><div class="k muted" style="font-size:11px">Throttle <span id="thrPct"></span></div><div class="bar"><i id="thrBar" style="background:var(--ok)"></i></div></div>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:8px" id="driverMode"></div>
+      </div>
+      <div class="panel">
+        <h3>What happened <span class="right"><span class="badge ollon">ground truth</span></span></h3>
+        <div id="truth" style="font-size:14px;line-height:1.5">–</div>
+      </div>
     </div>
-    <div class="panel">
-      <h3>What really happened <span class="badges"><span class="badge ollon">ground truth</span></span></h3>
-      <div class="truth" id="truth">Pick a scenario and press play.</div>
+
+    <!-- CENTER: the four tyres -->
+    <div class="stack">
+      <div class="panel">
+        <h3><span class="help" title="Each tile is one tyre, arranged as on the car (front at the top). The big number is the tread surface temperature; the colour bar shows it against the grip window.">Tyres</span>
+          <span class="right"><span class="tag" id="tyreSource">–</span></span></h3>
+        <div class="car" id="car">
+          <div id="tile_fl"></div><div class="chassis"></div><div id="tile_fr"></div>
+          <div id="tile_rl"></div><div id="tile_rr"></div>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:10px" id="tyreNote"></div>
+      </div>
+      <div class="panel">
+        <h3><span class="help" title="Laps this set of tyres can still do before the performance cliff, at 90% confidence (calibrated on held-out races).">Tyre life</span>
+          <span class="right"><span class="badge ampere">survival model</span></span></h3>
+        <div class="life">
+          <div class="kv"><div class="k">Safe laps left (90%)</div><div class="big" id="safeLaps">–</div></div>
+          <div class="kv"><div class="k">Likely laps to the cliff</div><div class="big" id="medianLaps">–</div></div>
+        </div>
+        <canvas class="chart" id="lifeChart"></canvas>
+      </div>
+    </div>
+
+    <!-- RIGHT: risk, reasons, prevention -->
+    <div class="stack">
+      <div class="panel">
+        <h3><span class="help" title="Calibrated probability that the event happens within the next second: 20% means that about 1 in 5 such moments really does lead to it. The coloured bar shows what is driving the risk; the note says how to prevent it.">Risk in the next second</span>
+          <span class="right"><span class="badge ampere">calibrated · explained</span></span></h3>
+        <div class="risk" id="risk_lockup"></div>
+        <div class="risk" id="risk_wheelspin"></div>
+      </div>
+      <div class="panel">
+        <h3>Pit wall log</h3>
+        <div class="log" id="log"></div>
+      </div>
     </div>
   </section>
 
-  <!-- RIGHT: pit call + life -->
-  <section class="stack">
-    <div class="panel">
-      <h3>Pit call <span class="badges"><span class="badge t1">→ crew phones</span></span></h3>
-      <div class="call l0" id="call"><div class="level">OK</div><div class="why" id="why">–</div></div>
-      <div class="radio" id="radio"></div>
-    </div>
-    <div class="panel">
-      <h3>Tyre life <span class="badges"><span class="badge ampere">survival + conformal</span><span class="badge ollon">2018–25</span></span></h3>
-      <div class="life">
-        <div class="kv"><div class="k">Safe laps left (90%)</div><div class="big" id="safe">–</div></div>
-        <div class="kv"><div class="k">Median laps to cliff</div><div class="big" id="median">–</div></div>
-        <div class="kv"><div class="k">P(cliff ≤ 3 laps)</div><div class="big" id="pc3" style="font-size:22px">–</div></div>
-        <div class="kv"><div class="k">Failure hazard / lap</div><div class="big" id="fail" style="font-size:22px">–</div></div>
-      </div>
-      <canvas id="lifechart" class="chart" style="margin-top:10px"></canvas>
-    </div>
-    <div class="panel">
-      <h3>Alert log</h3>
-      <div class="log" id="log"></div>
-    </div>
-  </section>
 </main>
 
-<div class="qr" id="qrbox"><div class="card"><img id="qrimg" alt="QR"><div id="qrurl" class="mono" style="margin-top:8px"></div><button class="btn" style="margin-top:10px;background:#eee" onclick="qrbox.classList.remove('show')">Close</button></div></div>
-
+<div class="qr" id="qrbox" hidden style="position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:40">
+  <div style="background:#fff;color:#111;padding:20px;border-radius:16px;text-align:center;max-width:90vw">
+    <img id="qrimg" alt="QR" style="width:min(300px,70vw);image-rendering:pixelated">
+    <div id="qrurl" class="mono" style="margin-top:8px"></div>
+    <button class="btn" style="margin-top:10px;background:#eee;color:#111" id="qrClose">Close</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
 <script src="/static/pitwall.js"></script>
 </body>
 </html>

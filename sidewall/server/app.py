@@ -157,6 +157,11 @@ def lan_ip() -> str:
 # ------------------------------------------------------------------ pages
 
 @app.get("/")
+def home():
+    return FileResponse(WEB / "index.html")
+
+
+@app.get("/pitwall")
 def pitwall():
     return FileResponse(WEB / "pitwall.html")
 
@@ -180,7 +185,8 @@ def atlas():
 
 @app.get("/api/scenarios")
 def scenarios():
-    return [{"key": k, "title": s.title, "what_happened": s.what_happened} for k, s in replay.SCENARIOS.items()]
+    return [{"key": k, "title": s.title, "what_happened": s.what_happened, "failure_lap": s.failure_lap}
+            for k, s in replay.SCENARIOS.items()]
 
 
 @app.get("/api/replay/{key}")
@@ -297,6 +303,7 @@ async def ws_pitwall(ws: WebSocket):
 @app.websocket("/ws/crew")
 async def ws_crew(ws: WebSocket):
     await hub.join("crew", ws)
+    await _presence()
     try:
         while True:
             msg = await ws.receive_json()
@@ -304,19 +311,38 @@ async def ws_crew(ws: WebSocket):
                 await hub.send("pitwall", {"type": "crew_ack", "who": msg.get("who", "crew")})
     except WebSocketDisconnect:
         hub.leave("crew", ws)
+        await _presence()
 
 
 @app.websocket("/ws/driver")
 async def ws_driver(ws: WebSocket):
-    """Phone controller: throttle/brake inputs drive the live simulator."""
+    """Phone controller. Messages: claim (take the wheel), release (hand back), input (pedals, with a sequence
+    number so late packets are dropped). Anything received counts as a heartbeat."""
     await hub.join("driver", ws)
+    await _presence()
     try:
         while True:
             msg = await ws.receive_json()
-            if msg.get("type") == "input" and LIVE is not None:
-                LIVE.set_input(msg.get("throttle", 0.0), msg.get("brake", 0.0))
+            if LIVE is None:
+                continue
+            kind = msg.get("type")
+            if kind == "claim":
+                LIVE.claim()
+                await hub.send("pitwall", {"type": "notice", "text": "A driver has taken the wheel."})
+            elif kind == "release":
+                LIVE.release()
+                await hub.send("pitwall", {"type": "notice", "text": "Driver handed back to the autopilot."})
+            elif kind == "input":
+                LIVE.set_input(msg.get("throttle", 0.0), msg.get("brake", 0.0), int(msg.get("seq", 0)))
     except WebSocketDisconnect:
         hub.leave("driver", ws)
+        await _presence()
+
+
+async def _presence():
+    """Tell the pit wall how many phones are connected (driver / crew)."""
+    await hub.send("pitwall", {"type": "presence", "driver": len(hub.clients["driver"]),
+                               "crew": len(hub.clients["crew"])})
 
 
 # ------------------------------------------------------------------ live sim
@@ -324,15 +350,8 @@ async def ws_driver(ws: WebSocket):
 LIVE = None
 
 
-async def _publish_live(msg: dict):
-    await hub.send("pitwall", msg)
-    f = msg.get("frame", {})
-    ev = f.get("events", {})
-    # Haptic feedback on the driver's phone when the tyres complain.
-    await hub.send("driver", {"type": "feel", "lockup": ev.get("lockup", {}).get("on", False),
-                              "wheelspin": ev.get("wheelspin", {}).get("on", False),
-                              "speed": f.get("speed"), "gear": f.get("gear"),
-                              "call": f.get("call", {}).get("call"), "level": f.get("call", {}).get("level", 0)})
+async def _publish_live(channel: str, msg: dict):
+    await hub.send(channel, msg)
 
 
 @app.post("/api/live/start")
@@ -342,6 +361,7 @@ async def live_start():
         from sidewall.sources.live import LiveSession
         LIVE = await asyncio.to_thread(LiveSession, BUNDLES, _publish_live)
     LIVE.start()
+    await _presence()
     return {"track": LIVE.track, "circuit": LIVE.profile["circuit"], "lap_ref_s": LIVE.profile["lap_ref_s"]}
 
 
