@@ -4,7 +4,6 @@
 data/raw/
 data/cache/
 data/processed/
-models/weights/*.joblib
 data/*.log
 .fastf1_cache/
 .pytest_cache/
