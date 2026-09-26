@@ -47,6 +47,13 @@ Expected data sources include:
 | **OpenF1 API** | `https://openf1.org` | Historical and live JSON/CSV streams for speed, throttle, RPM, timing intervals, session context | API-friendly telemetry source for live-ish demos, driver-specific timing, micro-sector deltas, and acceleration-drop analysis. |
 | **Kaggle F1 tyre strategy datasets** | Search Kaggle for F1 tyre strategy datasets such as `F1-Tyre-Strategy-Engine` projects | `Compound`, `StintLength`, aggregated `AirTemp`, `TrackTemp`, stint summaries | Tabular ML starting point for tyre degradation, stint-length, compound, and environmental feature experiments. |
 
+Known useful Kaggle targets:
+
+- `navenkumar1998/formula-1-dataset-with-weather-and-tyre-features`: primary Kaggle
+  target for SIDEWALL stint and degradation experiments. It is lap-level and includes
+  tyre/stint features such as compound, tyre life, fresh tyre, and stint, plus weather
+  context such as air temperature, track temperature, rainfall, humidity, and wind.
+
 Be precise about what the data can prove:
 
 - Public FastF1 telemetry can support a **possible lock-up** or **braking anomaly**
@@ -135,6 +142,14 @@ Run the current entry point:
 
 ```bash
 uv run python main.py
+```
+
+Extract downloaded Kaggle F1 tyre strategy CSVs, or a Kaggle dataset slug if the
+Kaggle CLI is installed and authenticated:
+
+```bash
+uv run python datasets/extract_kaggle_tyre_strategy.py --input data/raw/f1_strategy
+uv run python datasets/extract_kaggle_tyre_strategy.py --kaggle-dataset navenkumar1998/formula-1-dataset-with-weather-and-tyre-features
 ```
 
 If `uv` is not available, install dependencies with your preferred Python environment
