@@ -148,6 +148,7 @@ class LiveSession:
         self.lap_info = laps.iloc[-1].to_dict()
 
     async def _analyse(self):
+        prev_laps = self.n_laps_seen
         self._update_laps()
         n = len(self.rows)
         if n < 40:
@@ -169,6 +170,8 @@ class LiveSession:
         frame["truth"] = {k: bool(self.truth.get(k)) for k in ("lockup", "wheelspin", "slide", "off")}
         self.latest_frame = _sanitize(frame)
         await self.publish("pitwall", {"type": "live", "frame": self.latest_frame})
+        if self.n_laps_seen > prev_laps:
+            await self.publish("pitwall", {"type": "feedback_lap", "frame": self.latest_frame})
 
     # ---------------------------------------------------------------- lifecycle
     def start(self):

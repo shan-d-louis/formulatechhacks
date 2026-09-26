@@ -6,6 +6,8 @@ RAW = DATA / "raw"
 PROCESSED = DATA / "processed"
 CACHE = DATA / "cache"
 FASTF1_CACHE = CACHE / "fastf1"
+FEEDBACK_CACHE = CACHE / "feedback"
+FEEDBACK_STATE = FEEDBACK_CACHE / "live_feedback.json"
 WEIGHTS = ROOT / "models" / "weights"
 
 # FastF1 race-level output
@@ -18,5 +20,5 @@ THULAB_PARQUET = RAW / "thulab_spa.parquet"
 
 SEASONS = list(range(2018, 2026))
 
-for _d in (RAW, PROCESSED, FASTF1_CACHE, WEIGHTS, LAPS_DIR, RC_DIR, RESULTS_DIR, TELEM_DIR):
+for _d in (RAW, PROCESSED, FASTF1_CACHE, FEEDBACK_CACHE, WEIGHTS, LAPS_DIR, RC_DIR, RESULTS_DIR, TELEM_DIR):
     _d.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,7 @@ import io
 import json
 import socket
 import sys
+import time
 from typing import Any, Literal
 
 import qrcode
@@ -24,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 
 from sidewall import config
 from sidewall.engine.monitor import load_bundles
+from sidewall.server import feedback
 from sidewall.server.jobs import JOBS, JobRecord
 from sidewall.server.utils import short_git_hash
 from sidewall.sources import replay
@@ -54,7 +56,7 @@ class LapsPredictionResponse(BaseModel):
     low: float
     mid: float
     high: float
-    source: Literal["lgbm", "baseline", "stub"]
+    source: Literal["tierb", "lgbm", "baseline", "stub"]
     model_version: str
     evidence: Literal["estimated"] = "estimated"
 
@@ -65,6 +67,13 @@ class AnalyticsJobRequest(BaseModel):
     kind: Literal["replay"] = "replay"
     scenario_key: str
     rebuild: bool = False
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class FeedbackJobRequest(BaseModel):
+    """Request to refresh runtime-only feedback state."""
+
+    kind: Literal["feedback_update"] = "feedback_update"
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -100,7 +109,13 @@ def model_status() -> dict[str, Any]:
         "limits": [
             "Public telemetry cannot confirm individual wheel lock-up without wheel-speed evidence.",
             "Tyre pressure, temperature, wear, and failure risk are estimated unless directly measured.",
+            "Runtime feedback overlays are advisory only and do not mutate trained model weights.",
         ],
+        "feedback_overlay": {
+            "runtime_only": True,
+            "state_path": str(config.FEEDBACK_STATE),
+            "weights_mutated_by_feedback": False,
+        },
     }
 
 
@@ -235,6 +250,30 @@ async def enqueue_replay_job(req: AnalyticsJobRequest):
     return job_status(job)
 
 
+async def _run_feedback_update(job: JobRecord) -> dict[str, Any]:
+    """Build and persist bounded runtime feedback state."""
+    job.progress = 0.2
+    snapshot = feedback.FEEDBACK.snapshot()
+    job.progress = 0.45
+    state = await asyncio.to_thread(feedback.build_feedback_state, snapshot, short_git_hash(config.ROOT))
+    job.progress = 0.75
+    written = await asyncio.to_thread(feedback.write_feedback_state, state)
+    job.progress = 0.95
+    return written
+
+
+@app.post("/api/jobs/feedback", response_model=JobStatusResponse, status_code=202)
+async def enqueue_feedback_job(req: FeedbackJobRequest):
+    """Schedule a runtime-only feedback refresh without touching model weights."""
+    job = await JOBS.enqueue(req.kind, _run_feedback_update)
+    return job_status(job)
+
+
+@app.get("/api/feedback/status")
+def feedback_status():
+    return feedback.read_feedback_state()
+
+
 @app.get("/api/jobs/{job_id}", response_model=JobStatusResponse)
 def get_job(job_id: str):
     job = JOBS.get(job_id)
@@ -351,7 +390,31 @@ LIVE = None
 
 
 async def _publish_live(channel: str, msg: dict):
+    if channel == "pitwall":
+        await _record_feedback_signal(msg)
     await hub.send(channel, msg)
+
+
+_last_feedback_enqueue = 0.0
+FEEDBACK_PERIOD_S = 30.0
+
+
+async def _record_feedback_signal(msg: dict) -> None:
+    """Collect live feedback samples and periodically enqueue an aggregate refresh."""
+    global _last_feedback_enqueue
+    kind = msg.get("type")
+    if kind == "live" and isinstance(msg.get("frame"), dict):
+        feedback.FEEDBACK.record_frame(msg["frame"])
+    elif kind == "feedback_lap" and isinstance(msg.get("frame"), dict):
+        feedback.FEEDBACK.record_frame(msg["frame"])
+    elif kind == "crew_ack":
+        feedback.FEEDBACK.record_ack(msg.get("who", "crew"))
+    else:
+        return
+    now = time.monotonic()
+    if kind == "feedback_lap" or (kind == "live" and now - _last_feedback_enqueue >= FEEDBACK_PERIOD_S):
+        _last_feedback_enqueue = now
+        await JOBS.enqueue("feedback_update", _run_feedback_update)
 
 
 @app.post("/api/live/start")
