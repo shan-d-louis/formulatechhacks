@@ -1,59 +1,14 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SIDEWALL · AI tyre safety</title>
-<link rel="stylesheet" href="/static/app.css">
+  <script type="module" crossorigin src="/static/assets/index-BpP88Sew.js"></script>
+  <link rel="modulepreload" crossorigin href="/static/assets/jsx-runtime-CoSx1t1J.js">
+  <link rel="stylesheet" crossorigin href="/static/assets/jsx-runtime-B184314N.css">
 </head>
 <body>
-<header class="topbar">
-  <a class="brand" href="/"><b>SIDEWALL</b><span>AI tyre-safety pit wall</span></a>
-  <div class="right">
-    <span class="badge t1">Track 1 · Safety Diagnosis</span>
-    <span class="badge ollon">Ollon · Data-driven</span>
-    <span class="badge ampere">Ampere · AI</span>
-  </div>
-</header>
-
-<section class="hero">
-  <h1>See a tyre failure coming.<br>Tell the pit crew before it happens.</h1>
-  <p class="lead">SIDEWALL watches all four tyres in real time. It predicts lock-ups, wheelspin, overheating, air loss and the
-    performance cliff, explains <em>why</em> (braking, throttle, heat, pressure) and sends the pit crew a clear call:
-    stay out, manage it, or box.</p>
-</section>
-
-<section class="journeys">
-  <a class="journey" href="/pitwall?mode=replay&scenario=silverstone2020">
-    <span class="n">1 · 3 MINUTES</span>
-    <h2>Watch it predict a real failure</h2>
-    <p>Replay Hamilton's last stint at Silverstone 2020. The model never saw that season. Watch the pit call escalate
-      laps before the front-left tyre failed on the final lap.</p>
-    <span class="go">Start the replay →</span>
-  </a>
-  <a class="journey" href="/pitwall?mode=live">
-    <span class="n">2 · HANDS-ON</span>
-    <h2>Drive it yourself</h2>
-    <p>Your phone becomes the brake and throttle. Brake too late or floor it out of a corner, and watch SIDEWALL predict the
-      lock-up or wheelspin, explain why, and tell the pit crew how to prevent it.</p>
-    <span class="go">Take the wheel →</span>
-  </a>
-  <a class="journey" href="/atlas">
-    <span class="n">3 · THE DATA</span>
-    <h2>Explore the tyre data</h2>
-    <p>Six seasons of real F1 stints turned into a tyre-safety atlas: a data-driven stint limit for every circuit, how
-      degradation changed, and how accurate every model is on data it never saw.</p>
-    <span class="go">Open the atlas →</span>
-  </a>
-</section>
-
-<section class="how">
-  <div><b>1 · Sense</b><span class="muted">Speed, throttle, brake and position, the same signals a public F1 feed has, plus tyre
-    sensors when the car has them. A virtual tyre-pressure sensor estimates temperatures and pressures when it doesn't.</span></div>
-  <div><b>2 · Predict and explain</b><span class="muted">Calibrated risk of a lock-up or wheelspin in the next second, laps left before
-    the performance cliff, and leak / flat-spot detection. Every number comes with its reasons.</span></div>
-  <div><b>3 · Tell the pit crew</b><span class="muted">One escalating call (OK · manage · box this lap · box now) sent to the crew's
-    phones, with a radio line for the driver saying what to change.</span></div>
-</section>
+<div id="root"></div>
 </body>
 </html>

@@ -1,0 +1,13 @@
+import{n as e,r as t,t as n}from"./jsx-runtime-CoSx1t1J.js";var r=t(),i=e();function a(){let e=e=>document.getElementById(e),t=[`STAY OUT`,`MANAGE`,`BOX THIS LAP`,`BOX NOW`],n=null,r=-1;function i(e){if(n)for(let t=0;t<e;t++){let e=n.createOscillator(),r=n.createGain();e.frequency.value=880,e.connect(r),r.connect(n.destination);let i=n.currentTime+t*.25;r.gain.setValueAtTime(.3,i),r.gain.setValueAtTime(0,i+.15),e.start(i),e.stop(i+.16)}}document.body.addEventListener(`click`,()=>{n||=new(window.AudioContext||window.webkitAudioContext)},{once:!0});function a(n){document.body.className=`l${n.level}`,e(`call`).textContent=t[n.level],e(`why`).textContent=n.reasons&&n.reasons.length?n.reasons.join(` · `):`All tyres healthy.`,e(`coach`).hidden=!n.radio,e(`coach`).textContent=n.radio?`📻 ${n.radio}`:``;for(let t of[`fl`,`fr`,`rl`,`rr`]){let r=n.tyres?n.tyres[t]:null;e(`h_${t}`).textContent=r==null?`–`:`health ${Math.round(r)}`,e(`t_${t}`).classList.toggle(`change`,n.level>=2&&(t===n.worst_tyre||r!=null&&r<45))}n.level!==r&&n.level>=2&&(navigator.vibrate&&navigator.vibrate(n.level===3?[400,150,400,150,400]:[300,150,300]),i(n.level===3?5:3)),r=n.level}function o(){let t=new WebSocket(`${location.protocol===`https:`?`wss`:`ws`}://${location.host}/ws/crew`);t.onopen=()=>e(`conn`).textContent=`● live`,t.onclose=()=>{e(`conn`).textContent=`reconnecting…`,setTimeout(o,1500)},t.onmessage=e=>{let t=JSON.parse(e.data);t.type===`call`&&a(t)},e(`ack`).onclick=()=>{t.send(JSON.stringify({type:`ack`,who:`crew`})),e(`ack`).textContent=`✔ ACKNOWLEDGED`,setTimeout(()=>e(`ack`).textContent=`ACKNOWLEDGE`,2e3)}}return o(),()=>void 0}var o=n(),s=`<div class="top"><b>SIDEWALL · PIT CREW</b><span class="mono" id="conn">connecting…</span></div>
+  <div class="wrap">
+    <div class="call" id="call">STAY OUT</div>
+    <div class="why" id="why">Waiting for the pit wall.</div>
+    <div class="coach" id="coach" hidden></div>
+    <div class="car">
+      <div class="t" id="t_fl">FL<small id="h_fl">–</small></div><div class="ch"></div><div class="t" id="t_fr">FR<small id="h_fr">–</small></div>
+      <div class="t" id="t_rl">RL<small id="h_rl">–</small></div><div class="t" id="t_rr">RR<small id="h_rr">–</small></div>
+    </div>
+    <button class="ack" id="ack">ACKNOWLEDGE</button>
+    <div class="muted" style="font-size:12px">Tap anywhere once to enable sound. Highlighted tyres: prepare to change.</div>
+  </div>
+`;function c(){return(0,r.useEffect)(()=>{let e=a();return()=>e?.()},[]),(0,o.jsx)(`div`,{dangerouslySetInnerHTML:{__html:s}})}document.body.className=`l0`,(0,i.createRoot)(document.getElementById(`root`)).render((0,o.jsx)(c,{}));

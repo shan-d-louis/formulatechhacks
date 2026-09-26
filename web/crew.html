@@ -1,79 +1,16 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0c10">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0c10" />
 <title>SIDEWALL Crew</title>
-<link rel="stylesheet" href="/static/app.css">
-<style>
-  body { display: flex; flex-direction: column; min-height: 100dvh; transition: background .3s; }
-  .top { display: flex; justify-content: space-between; padding: 10px 16px; font-size: 12px; color: var(--muted); }
-  .wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px 16px; gap: 14px; }
-  .call { font-size: clamp(44px, 15vw, 96px); font-weight: 900; letter-spacing: .03em; line-height: 1; }
-  .why { font-size: 17px; max-width: 520px; }
-  .coach { font-size: 15px; max-width: 520px; padding: 10px 14px; border-radius: 10px; background: rgba(255,255,255,.08); border-left: 4px solid #fff; text-align: left; }
-  .car { display: grid; grid-template-columns: 1fr 26px 1fr; gap: 10px; width: min(320px, 82vw); margin-top: 4px; }
-  .car .ch { grid-column: 2; grid-row: 1 / span 2; border-radius: 12px; background: rgba(255,255,255,.08); }
-  .t { border-radius: 12px; padding: 12px 6px; background: rgba(255,255,255,.08); border: 2px solid transparent; font-weight: 800; }
-  .t.change { border-color: #fff; background: rgba(255,255,255,.28); }
-  .t small { display: block; font-weight: 500; opacity: .85; font-family: var(--mono); }
-  .ack { font-size: 20px; padding: 16px 28px; border-radius: 14px; border: 0; background: #fff; color: #111; font-weight: 800; }
-  body.l0 { background: #0c2418; } body.l1 { background: #33280a; } body.l2 { background: #4f2206; } body.l3 { background: #5e0913; }
-</style>
+  <script type="module" crossorigin src="/static/assets/crew-BZOn2hms.js"></script>
+  <link rel="modulepreload" crossorigin href="/static/assets/jsx-runtime-CoSx1t1J.js">
+  <link rel="stylesheet" crossorigin href="/static/assets/jsx-runtime-B184314N.css">
+  <link rel="stylesheet" crossorigin href="/static/assets/crew-tBGWoCRi.css">
 </head>
-<body class="l0">
-  <div class="top"><b>SIDEWALL · PIT CREW</b><span class="mono" id="conn">connecting…</span></div>
-  <div class="wrap">
-    <div class="call" id="call">STAY OUT</div>
-    <div class="why" id="why">Waiting for the pit wall.</div>
-    <div class="coach" id="coach" hidden></div>
-    <div class="car">
-      <div class="t" id="t_fl">FL<small id="h_fl">–</small></div><div class="ch"></div><div class="t" id="t_fr">FR<small id="h_fr">–</small></div>
-      <div class="t" id="t_rl">RL<small id="h_rl">–</small></div><div class="t" id="t_rr">RR<small id="h_rr">–</small></div>
-    </div>
-    <button class="ack" id="ack">ACKNOWLEDGE</button>
-    <div class="muted" style="font-size:12px">Tap anywhere once to enable sound. Highlighted tyres: prepare to change.</div>
-  </div>
-<script>
-const $ = (id) => document.getElementById(id);
-const LABEL = ["STAY OUT", "MANAGE", "BOX THIS LAP", "BOX NOW"];
-let audio = null, last = -1;
-function beep(n) {
-  if (!audio) return;
-  for (let i = 0; i < n; i++) {
-    const o = audio.createOscillator(), g = audio.createGain();
-    o.frequency.value = 880; o.connect(g); g.connect(audio.destination);
-    const t = audio.currentTime + i * 0.25; g.gain.setValueAtTime(0.3, t); g.gain.setValueAtTime(0, t + 0.15);
-    o.start(t); o.stop(t + 0.16);
-  }
-}
-document.body.addEventListener("click", () => { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); }, { once: true });
-function show(m) {
-  document.body.className = `l${m.level}`;
-  $("call").textContent = LABEL[m.level];
-  $("why").textContent = m.reasons && m.reasons.length ? m.reasons.join(" · ") : "All tyres healthy.";
-  $("coach").hidden = !m.radio;
-  $("coach").textContent = m.radio ? `📻 ${m.radio}` : "";
-  for (const w of ["fl", "fr", "rl", "rr"]) {
-    const h = m.tyres ? m.tyres[w] : null;
-    $(`h_${w}`).textContent = h != null ? `health ${Math.round(h)}` : "–";
-    $(`t_${w}`).classList.toggle("change", m.level >= 2 && (w === m.worst_tyre || (h != null && h < 45)));
-  }
-  if (m.level !== last && m.level >= 2) {
-    if (navigator.vibrate) navigator.vibrate(m.level === 3 ? [400, 150, 400, 150, 400] : [300, 150, 300]);
-    beep(m.level === 3 ? 5 : 3);
-  }
-  last = m.level;
-}
-function connect() {
-  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/crew`);
-  ws.onopen = () => $("conn").textContent = "● live";
-  ws.onclose = () => { $("conn").textContent = "reconnecting…"; setTimeout(connect, 1500); };
-  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.type === "call") show(m); };
-  $("ack").onclick = () => { ws.send(JSON.stringify({ type: "ack", who: "crew" })); $("ack").textContent = "✔ ACKNOWLEDGED"; setTimeout(() => $("ack").textContent = "ACKNOWLEDGE", 2000); };
-}
-connect();
-</script>
+<body>
+<div id="root"></div>
 </body>
 </html>

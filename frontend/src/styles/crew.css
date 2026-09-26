@@ -1,0 +1,13 @@
+body { display: flex; flex-direction: column; min-height: 100dvh; transition: background .3s; }
+  .top { display: flex; justify-content: space-between; padding: 10px 16px; font-size: 12px; color: var(--muted); }
+  .wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px 16px; gap: 14px; }
+  .call { font-size: clamp(44px, 15vw, 96px); font-weight: 900; letter-spacing: .03em; line-height: 1; }
+  .why { font-size: 17px; max-width: 520px; }
+  .coach { font-size: 15px; max-width: 520px; padding: 10px 14px; border-radius: 10px; background: rgba(255,255,255,.08); border-left: 4px solid #fff; text-align: left; }
+  .car { display: grid; grid-template-columns: 1fr 26px 1fr; gap: 10px; width: min(320px, 82vw); margin-top: 4px; }
+  .car .ch { grid-column: 2; grid-row: 1 / span 2; border-radius: 12px; background: rgba(255,255,255,.08); }
+  .t { border-radius: 12px; padding: 12px 6px; background: rgba(255,255,255,.08); border: 2px solid transparent; font-weight: 800; }
+  .t.change { border-color: #fff; background: rgba(255,255,255,.28); }
+  .t small { display: block; font-weight: 500; opacity: .85; font-family: var(--mono); }
+  .ack { font-size: 20px; padding: 16px 28px; border-radius: 14px; border: 0; background: #fff; color: #111; font-weight: 800; }
+  body.l0 { background: #0c2418; } body.l1 { background: #33280a; } body.l2 { background: #4f2206; } body.l3 { background: #5e0913; }

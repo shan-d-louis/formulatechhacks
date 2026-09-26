@@ -1,3 +1,5 @@
+// @ts-nocheck
+export function initPitwall() {
 // SIDEWALL pit wall. Two modes share the same rendering:
 //   replay: plays back pre-analysed frames of a real race (4 Hz), with a timeline and key moments
 //   live:   merges a fast car-state stream (10 Hz: position, pedals, tyre sensors) with analysed frames
@@ -394,3 +396,6 @@ addEventListener("resize", () => { fitMap(); if (MODE === "replay" && frames.len
   $("scenario").value = key;
   loadReplay(key);
 })();
+
+  return () => undefined;
+}

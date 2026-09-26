@@ -1,0 +1,19 @@
+main.atlas { max-width: 1280px; margin: 0 auto; padding: 16px 18px 40px; display: grid; gap: 14px; }
+  .hero { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 800px) { .hero { grid-template-columns: 1fr 1fr; } main.atlas { padding: 12px; } }
+  .stat .v { font-size: 30px; font-family: var(--mono); font-weight: 800; }
+  .two { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; }
+  @media (max-width: 1000px) { .two { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  td.num { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+  tr:hover td { background: var(--panel-2); cursor: pointer; }
+  tr.sel td { background: rgba(51, 182, 255, .12); }
+  .capbar { height: 8px; border-radius: 4px; background: var(--accent); }
+  canvas { width: 100%; height: 260px; display: block; }
+  .callout { border-left: 3px solid var(--t1); padding: 10px 14px; background: var(--panel-2); border-radius: 8px; font-size: 14px; line-height: 1.5; }
+  .scroll { max-height: 520px; overflow: auto; }
+  .model { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 1000px) { .model { grid-template-columns: 1fr; } }
+  .model .kv .v { font-size: 16px; }
