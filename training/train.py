@@ -6,8 +6,12 @@
 2. Main: per compound, three LightGBM quantile models (0.1, 0.5, 0.9), monotone +1 on age.
    Trees can't extrapolate, and teams pit before the cliff, so past the oldest age seen
    for a compound the prediction continues with the baseline's slope.
-Both are scored with grouped CV by race (never random lap splits): MAE of the
-median prediction and 80% interval coverage. Final models are refit on all data.
+Evaluation discipline (no race is ever in two places):
+  - races are split chronologically: the oldest ~60% train, the next ~20% validate, the newest ~20% test
+  - hyper-parameters (tree size, learning rate, rounds, track temp on/off) are chosen on validation only
+  - the chosen settings are refit on train + validation, then scored ONCE on the test races
+  - the per-compound age cap is computed from the fitting data only
+The shipped model is the train + validation fit: it has never seen a test race.
 
 The saved bundle is a plain dict (LightGBM models as model strings) so backend/laps.py
 can use it without importing this file. Laps remaining = first future age where
@@ -25,7 +29,6 @@ import lightgbm as lgb
 import matplotlib
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import GroupKFold
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -38,10 +41,16 @@ DATA_PATH = HERE / "data" / "train.parquet"
 MODEL_PATH = HERE / "laps_model.joblib"
 PLOT_DIR = HERE / "plots"
 
-N_FOLDS = 5
 Q_LO, Q_MID, Q_HI = cfg.QUANTILES
+VAL_FRAC, TEST_FRAC = 0.2, 0.2  # share of races (newest last) held out for validation and for the final test
+SPLITS = ("train", "val", "test")
+# Candidates scored on the validation races; the lowest mean pinball loss wins.
+TUNING_GRID = [
+    {"num_leaves": nl, "min_data_in_leaf": md, "learning_rate": lr, "rounds": n, "use_temp": ut}
+    for nl in (4, 7, 15) for md in (50, 100, 200) for lr, n in ((0.03, 400), (0.05, 200)) for ut in (False, True)
+]
 # Track temp is nearly constant within a race, so trees can use it to memorise races.
-# Off by default; CV reports the other variant so the choice stays evidence-based.
+# Default for direct fit_lgbm calls; the pipeline tunes it (on/off) on the validation races.
 USE_TRACK_TEMP = False
 LGBM_PARAMS = {
     # Built-in "quantile" objective refuses monotone constraints, so pinball loss is a custom objective.
@@ -109,23 +118,25 @@ def pinball_objective(q: float):
     return objective
 
 
-def fit_lgbm(df: pd.DataFrame, use_temp: bool = USE_TRACK_TEMP) -> dict:
+def fit_lgbm(df: pd.DataFrame, use_temp: bool = USE_TRACK_TEMP, params: dict | None = None,
+             rounds: int = LGBM_ROUNDS) -> dict:
     """Per compound: monotone quantile boosters + the max age seen + the baseline for the tail.
 
-    Boosters are stored as {"model_str", "init_score"} so the bundle loads without this module.
+    `params` overrides LGBM_PARAMS (tuned on the validation races). Boosters are stored as
+    {"model_str", "init_score"} so the bundle loads without this module.
     """
     model = {"use_temp": use_temp, "baseline": fit_baseline(df), "max_age": {}, "lgbm": {}, "_boosters": {}}
     for c in cfg.DRY_COMPOUNDS:
         sub = df[df["Compound"] == c]
         X = make_features(sub["TyreLife"], sub["TrackTemp"], use_temp)
         y = sub["Delta_s"].to_numpy(float)
-        params = {**LGBM_PARAMS, "monotone_constraints": [1] + [0] * (X.shape[1] - 1)}
+        params_c = {**LGBM_PARAMS, **(params or {}), "monotone_constraints": [1] + [0] * (X.shape[1] - 1)}
         model["max_age"][c] = float(sub["TyreLife"].max())
         model["lgbm"][c], model["_boosters"][c] = {}, {}
         for q in cfg.QUANTILES:
             init = float(np.quantile(y, q))  # start at the unconditional quantile, trees learn the rest
             data = lgb.Dataset(X, y, init_score=np.full(len(y), init))
-            booster = lgb.train({**params, "objective": pinball_objective(q)}, data, LGBM_ROUNDS)
+            booster = lgb.train({**params_c, "objective": pinball_objective(q)}, data, rounds)
             model["lgbm"][c][q] = {"model_str": booster.model_to_string(), "init_score": init}
             model["_boosters"][c][q] = booster
     return model
@@ -164,29 +175,116 @@ def scores(pred: np.ndarray, y: np.ndarray) -> dict:
     }
 
 
-def cross_validate(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Grouped K-fold by race. Returns df with out-of-fold predictions and overall scores."""
-    df = df.copy()
-    oof = {n: np.zeros((len(df), 3)) for n in ("base", "lgbm", "lgbm_alt")}
-    n_folds = min(N_FOLDS, df["RaceId"].nunique())
-    print(f"Grouped CV: {n_folds} folds over {df['RaceId'].nunique()} races, {len(df)} laps\n")
-    print(f"{'fold':>4} {'races':>5} {'laps':>6} | {'base MAE':>8} {'cov':>5} | {'lgbm MAE':>8} {'cov':>5}")
-    for k, (tr, te) in enumerate(GroupKFold(n_splits=n_folds).split(df, groups=df["RaceId"]), 1):
-        train, test = df.iloc[tr], df.iloc[te]
-        args = (test["Compound"], test["TyreLife"], test["TrackTemp"])
-        oof["base"][te] = predict_baseline(fit_baseline(train), test["Compound"], test["TyreLife"])
-        oof["lgbm"][te] = predict_lgbm(fit_lgbm(train, USE_TRACK_TEMP), *args)
-        oof["lgbm_alt"][te] = predict_lgbm(fit_lgbm(train, not USE_TRACK_TEMP), *args)
-        y = test["Delta_s"].to_numpy()
-        b, g = scores(oof["base"][te], y), scores(oof["lgbm"][te], y)
-        print(f"{k:>4} {test['RaceId'].nunique():>5} {len(te):>6} | "
-              f"{b['mae']:>8.3f} {b['coverage']:>5.0%} | {g['mae']:>8.3f} {g['coverage']:>5.0%}")
-    for name in ("base", "lgbm"):
-        df[f"{name}_lo"], df[f"{name}_mid"], df[f"{name}_hi"] = oof[name].T
-    y = df["Delta_s"].to_numpy()
-    return df, {"baseline": scores(oof["base"], y), "lightgbm": scores(oof["lgbm"], y),
-                "lightgbm_alt_temp": scores(oof["lgbm_alt"], y),
-                "constant": {"mae": float(np.mean(np.abs(y - np.median(y))))}}
+def pinball(pred: np.ndarray, y: np.ndarray) -> float:
+    """Mean pinball (quantile) loss over the low/mid/high columns: the tuning objective."""
+    losses = []
+    for j, q in enumerate(cfg.QUANTILES):
+        e = y - pred[:, j]
+        losses.append(np.mean(np.maximum(q * e, (q - 1) * e)))
+    return float(np.mean(losses))
+
+
+# ---------- splits: whole races, oldest -> newest, never overlapping ----------
+
+def chronological_split(df: pd.DataFrame, val_frac: float = VAL_FRAC, test_frac: float = TEST_FRAC) -> pd.Series:
+    """Label every lap 'train' / 'val' / 'test' by its race, oldest races first. Each part gets >= 1 race."""
+    races = df.drop_duplicates("RaceId").sort_values(["Year", "Round"])["RaceId"].tolist()
+    n = len(races)
+    if n < 3:
+        raise ValueError(f"need at least 3 races for train/val/test, got {n}")
+    n_test = max(1, round(n * test_frac))
+    n_val = max(1, round(n * val_frac))
+    n_train = n - n_val - n_test
+    if n_train < 1:
+        raise ValueError(f"{n} races is too few for val_frac={val_frac}, test_frac={test_frac}")
+    label = {r: ("train" if i < n_train else "val" if i < n_train + n_val else "test") for i, r in enumerate(races)}
+    return df["RaceId"].map(label).rename("split")
+
+
+def assert_no_overlap(df: pd.DataFrame, part: pd.Series) -> None:
+    """Raise if any race, stint or lap is in more than one split, or if the splits are out of time order."""
+    tagged = df.assign(_split=part.values)
+    for key in (["RaceId"], ["RaceId", "Driver", "Stint"], ["RaceId", "Driver", "Stint", "TyreLife"]):
+        n_parts = tagged.groupby(key)["_split"].nunique()
+        if (n_parts > 1).any():
+            raise ValueError(f"split overlap on {key}: {n_parts[n_parts > 1].index[:3].tolist()}")
+    order = tagged.drop_duplicates("RaceId").sort_values(["Year", "Round"])["_split"].map(SPLITS.index)
+    if not order.is_monotonic_increasing:
+        raise ValueError("split overlap in time: a later race is in an earlier split")
+
+
+def age_caps(fit_df: pd.DataFrame) -> pd.Series:
+    """Per-compound tyre-age cap for training (rare managed stints bias the curve), from fitting data only."""
+    return fit_df.groupby("Compound")["TyreLife"].quantile(cfg.TRAIN_AGE_QUANTILE)
+
+
+def capped(fit_df: pd.DataFrame) -> pd.DataFrame:
+    over = fit_df["TyreLife"] > fit_df["Compound"].map(age_caps(fit_df))
+    return fit_df[~over]
+
+
+def predictions(fit_df: pd.DataFrame, eval_df: pd.DataFrame, params: dict) -> dict:
+    """Fit on fit_df (age-capped), predict eval_df. Returns {name: (n, 3) low/mid/high} + the fitted model."""
+    fit_df = capped(fit_df)
+    p = {k: v for k, v in params.items() if k not in ("rounds", "use_temp")}
+    model = fit_lgbm(fit_df, params["use_temp"], p, params["rounds"])
+    args = (eval_df["Compound"], eval_df["TyreLife"], eval_df["TrackTemp"])
+    const = float(np.median(fit_df["Delta_s"]))
+    return {"lgbm": predict_lgbm(model, *args),
+            "base": predict_baseline(fit_baseline(fit_df), eval_df["Compound"], eval_df["TyreLife"]),
+            "const": np.column_stack([np.full(len(eval_df), const)] * 3), "_model": model}
+
+
+def tune(train_df: pd.DataFrame, val_df: pd.DataFrame, grid: list[dict]) -> list[dict]:
+    """Score every candidate: fit on the training races, measure on the validation races."""
+    y = val_df["Delta_s"].to_numpy(float)
+    rows = []
+    for params in grid:
+        pred = predictions(train_df, val_df, params)["lgbm"]
+        rows.append({"params": params, "val_pinball": pinball(pred, y),
+                     **{f"val_{k}": v for k, v in scores(pred, y).items()}})
+    return rows
+
+
+def run(df: pd.DataFrame, grid: list[dict] | None = None, val_frac: float = VAL_FRAC, test_frac: float = TEST_FRAC,
+        plot_path: Path | None = None) -> dict:
+    """Split -> tune on validation -> refit on train + validation -> score once on test."""
+    grid = grid or TUNING_GRID
+    part = chronological_split(df, val_frac, test_frac)
+    assert_no_overlap(df, part)
+    tr, va, te = (df[(part == s).values] for s in SPLITS)
+    races = {s: sorted(d["RaceId"].unique().tolist()) for s, d in zip(SPLITS, (tr, va, te))}
+    print(f"Split by race, oldest to newest: train {len(races['train'])} races ({len(tr)} laps), "
+          f"validation {len(races['val'])} ({len(va)}), test {len(races['test'])} ({len(te)})")
+    print(f"  train {races['train'][0]} .. {races['train'][-1]} | val {races['val'][0]} .. {races['val'][-1]} | "
+          f"test {races['test'][0]} .. {races['test'][-1]}")
+
+    tuning = tune(tr, va, grid)
+    tuning.sort(key=lambda r: r["val_pinball"])
+    chosen = tuning[0]["params"]
+    print(f"\nTuned {len(grid)} candidates on the validation races (lower pinball = better):")
+    print(f"  {'leaves':>6} {'min_leaf':>8} {'lr':>5} {'rounds':>6} {'temp':>5} | {'pinball':>7} {'MAE':>6} {'cov':>5}")
+    for r in tuning[:5]:
+        q = r["params"]
+        print(f"  {q['num_leaves']:>6} {q['min_data_in_leaf']:>8} {q['learning_rate']:>5} {q['rounds']:>6} "
+              f"{str(q['use_temp']):>5} | {r['val_pinball']:>7.4f} {r['val_mae']:>6.3f} {r['val_coverage']:>5.0%}")
+
+    fit_df = pd.concat([tr, va])
+    fit_races = sorted(fit_df["RaceId"].unique().tolist())
+    if set(fit_races) & set(races["test"]):
+        raise ValueError("split overlap: a test race reached the final fit")
+    pred = predictions(fit_df, te, chosen)
+    y = te["Delta_s"].to_numpy(float)
+    test = {"lightgbm": {**scores(pred["lgbm"], y), "pinball": pinball(pred["lgbm"], y)},
+            "baseline": {**scores(pred["base"], y), "pinball": pinball(pred["base"], y)},
+            "constant": {"mae": float(np.mean(np.abs(y - pred["const"][:, 1])))}}
+    if plot_path is not None:
+        held = te.copy()
+        for name in ("base", "lgbm"):
+            held[f"{name}_lo"], held[f"{name}_mid"], held[f"{name}_hi"] = pred[name].T
+        plot_stints(held, plot_path)
+    return {"split": races, "fit_races": fit_races, "tuning": tuning, "chosen": chosen, "test": test,
+            "model": pred["_model"], "fit_laps": int(len(capped(fit_df))), "caps": age_caps(fit_df).to_dict()}
 
 
 # ---------- laps remaining (the live rule, as a sanity check) ----------
@@ -267,10 +365,10 @@ def plot_stints(oof: pd.DataFrame, path: Path) -> None:
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper left", ncol=4, frameon=False, labelcolor=C_INK,
                bbox_to_anchor=(0.005, 0.96))
-    fig.suptitle("Tire degradation: predicted vs. actual (held-out races)", x=0.01, y=0.99,
+    fig.suptitle("Tire degradation: predicted vs. actual (held-out TEST races)", x=0.01, y=0.99,
                  ha="left", fontsize=14, color=C_INK, fontweight="bold")
-    fig.text(0.01, 0.005, "Fuel-corrected lap times, FastF1 2023–24 dry races. "
-             "Predictions are out-of-fold: each race was unseen by the model that predicted it.",
+    fig.text(0.01, 0.005, "Fuel-corrected lap times, FastF1 dry races. The model was fit on earlier races and "
+             "never saw these test races; its settings were tuned on separate validation races.",
              color=C_MUTED, fontsize=9)
     fig.tight_layout(rect=(0, 0.02, 1, 0.935))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -284,26 +382,21 @@ def main() -> None:
     if not DATA_PATH.exists():
         sys.exit(f"{DATA_PATH} not found. Run fetch.py and prepare.py first.")
     df = pd.read_parquet(DATA_PATH)
-    df = df[df["TrackTemp"].notna()]
-    caps = df.groupby("Compound")["TyreLife"].quantile(cfg.TRAIN_AGE_QUANTILE)
-    over = df["TyreLife"] > df["Compound"].map(caps)
-    print(f"Ignoring {int(over.sum())} laps older than the per-compound {cfg.TRAIN_AGE_QUANTILE:.0%} "
-          f"age quantile {caps.to_dict()}")
-    df = df[~over].reset_index(drop=True)
+    df = df[df["TrackTemp"].notna()].reset_index(drop=True)
 
-    oof, cv = cross_validate(df)
-    b, g, alt = cv["baseline"], cv["lightgbm"], cv["lightgbm_alt_temp"]
-    alt_name = "LightGBM " + ("with" if not USE_TRACK_TEMP else "without") + " track temp"
-    print("\nOut-of-fold results (target: lap-time delta, s)")
+    result = run(df, plot_path=PLOT_DIR / "degradation_stints.png")
+    t = result["test"]
+    print("\nTEST races (never used for fitting or tuning), target: lap-time delta, s")
     print(f"  {'model':<30} {'MAE':>7} {'80% coverage':>13} {'band width':>11}")
-    print(f"  {'constant median':<30} {cv['constant']['mae']:>7.3f} {'-':>13} {'-':>11}")
-    for name, r in (("baseline (per-compound curve)", b), ("LightGBM quantile (shipped)", g), (alt_name, alt)):
+    print(f"  {'constant median':<30} {t['constant']['mae']:>7.3f} {'-':>13} {'-':>11}")
+    for name, key in (("baseline (per-compound curve)", "baseline"), ("LightGBM quantile (shipped)", "lightgbm")):
+        r = t[key]
         print(f"  {name:<30} {r['mae']:>7.3f} {r['coverage']:>13.1%} {r['width']:>10.2f}s")
-    print(f"  LightGBM vs baseline MAE: {(g['mae'] - b['mae']) / b['mae']:+.1%}")
+    print(f"  LightGBM vs baseline MAE: {(t['lightgbm']['mae'] - t['baseline']['mae']) / t['baseline']['mae']:+.1%}")
 
-    model = fit_lgbm(df)
+    model = result["model"]
     bundle = {
-        "version": 2,
+        "version": 3,
         "compounds": list(cfg.DRY_COMPOUNDS),
         "quantiles": list(cfg.QUANTILES),
         "features": list(make_features([0.0], [0.0], model["use_temp"]).columns),
@@ -312,12 +405,17 @@ def main() -> None:
         "max_age": model["max_age"],
         "lgbm": model["lgbm"],
         "cliff_delta_s": cfg.CLIFF_DELTA_S,
-        "cv": cv,
-        "n_laps": len(df),
-        "n_races": int(df["RaceId"].nunique()),
+        "split": result["split"],               # race ids per split; the model was fit on train + val only
+        "chosen_params": result["chosen"],
+        "tuning": result["tuning"],
+        "test": result["test"],
+        "cv": result["test"],                   # kept for older readers of the bundle
+        "n_laps": result["fit_laps"],
+        "n_races": len(result["fit_races"]),
     }
     joblib.dump(bundle, MODEL_PATH)
-    print(f"\nSaved {MODEL_PATH}")
+    print(f"\nSaved {MODEL_PATH} (fit on {len(result['fit_races'])} train + validation races, "
+          f"{result['fit_laps']} laps; chosen {result['chosen']})")
     for c, p in model["baseline"].items():
         kind = "quadratic" if p["coef"][0] else "linear"
         print(f"  baseline {c:<7} {kind:<9} coef {np.round(p['coef'], 4).tolist()}  "
@@ -327,10 +425,7 @@ def main() -> None:
     print(f"\nSanity check, laps remaining on a fresh set (age 1) at {temp:.0f} C track:")
     for c in cfg.DRY_COMPOUNDS:
         print(f"  {c:<7} {laps_remaining(model, c, 1.0, temp)}")
-
-    plot_path = PLOT_DIR / "degradation_stints.png"
-    plot_stints(oof, plot_path)
-    print(f"Saved {plot_path}")
+    print(f"Saved {PLOT_DIR / 'degradation_stints.png'} (held-out test races)")
 
 
 if __name__ == "__main__":
