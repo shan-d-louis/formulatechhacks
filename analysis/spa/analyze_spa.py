@@ -37,7 +37,7 @@ print(json.dumps(summary,indent=2));print(events.to_string(index=False))
 windows=[]
 for event_id,e in enumerate(events.itertuples(),1):
     mask=(t>=e.start_s-2)&(t<=e.end_s+2)
-    window=p.loc[mask,required+['tyre_core_'+w for w in radii]+['psi_'+w for w in radii]].copy()
+    window=p.loc[mask,required+['tyre_core_'+w for w in radii]+['psi_'+w for w in radii]+['load_'+w for w in radii]].copy()
     window.insert(0,'event_id',event_id)
     window.insert(1,'elapsed_s',t[mask])
     for w in radii: window['slip_proxy_'+w]=slip.loc[mask,w]
@@ -49,3 +49,10 @@ for cutoff in [-.1,-.2,-.3]:
         count=sum(len(episodes((p.brake>.2)&(p.speed_kmh>50)&(slip[w]<cutoff),duration)) for w in radii)
         sensitivity.append(dict(proxy_threshold=cutoff,minimum_duration_s=duration,wheel_events=count))
 pd.DataFrame(sensitivity).to_csv(out/'threshold_sensitivity.csv',index=False)
+
+load_audit=[]
+for w,r in radii.items():
+    mask=(p.brake>.2)&(p.speed_kmh>50)&(slip[w]<-.2)&(p['load_'+w]>0)
+    for a,b in episodes(mask,.08):
+        load_audit.append(dict(wheel=w,start_s=float(t[a]),end_s=float(t[b]),duration_s=float(t[b]-t[a])))
+pd.DataFrame(load_audit,columns=['wheel','start_s','end_s','duration_s']).to_csv(out/'positive_load_candidates.csv',index=False)
