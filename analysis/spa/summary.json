@@ -1,0 +1,36 @@
+{
+  "rows": 51554,
+  "columns": 84,
+  "duration_s": 803.2867765426636,
+  "mean_hz": 64.17757830134273,
+  "median_dt_ms": 15.558719635009766,
+  "max_gap_s": 0.030892372131347656,
+  "gaps_over_100ms": 0,
+  "nonpositive_deltas": 0,
+  "missing_cells": 0,
+  "constant_columns": [
+    "lap_progress",
+    "brake_temp_fl",
+    "brake_temp_fr",
+    "brake_temp_rl",
+    "brake_temp_rr",
+    "turbo_boost",
+    "drs",
+    "tc",
+    "abs",
+    "brake_bias",
+    "air_temp",
+    "road_temp",
+    "water_temp"
+  ],
+  "calibration_samples": 1860,
+  "effective_radius_m": {
+    "fl": 0.3460800237016441,
+    "fr": 0.3461184807850576,
+    "rl": 0.3565054665025969,
+    "rr": 0.35651038275494323
+  },
+  "braking_episodes": 92,
+  "candidate_wheel_events": 5,
+  "sha256": "6eadc93f64c9fab08a181b86ac644a1a936777ea3abdd754229ae67f9f57c697"
+}
