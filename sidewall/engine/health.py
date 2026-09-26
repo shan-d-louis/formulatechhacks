@@ -86,4 +86,14 @@ def pit_call(tyres: dict[str, TyreState], flags: dict) -> dict:
         2: f"Box, box. {WHEEL_NAMES[worst].capitalize()} tyre. {detail}",
         3: f"Box now, box now. Bring it in carefully. {detail}",
     }[level].strip()
-    return {"level": level, "call": CALLS[level], "worst_tyre": worst, "reasons": reasons[:4], "radio": radio}
+    coach = flags.get("coach")
+    if coach:
+        # Preventive: sustained lock-up / wheelspin risk. Tell the driver what to change before it happens.
+        name = "Lock-up" if coach["event"] == "lockup" else "Wheelspin"
+        tag = f"{name} risk {100 * coach['p_avg']:.0f}% · {coach['top'].lower()}"
+        reasons = [tag] + [r for r in reasons if r != tag]
+        if level <= 1:
+            level = 1
+            radio = coach["advice"]
+    return {"level": level, "call": CALLS[level], "worst_tyre": worst, "reasons": reasons[:4], "radio": radio,
+            "coach": coach}

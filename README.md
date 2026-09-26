@@ -32,6 +32,30 @@ SIDEWALL watches every tyre in real time. It detects lock-ups, wheelspin, overhe
 
 The **feature contract** (`sidewall/features.py`) is the key to going from sim to real. The detectors only ever see what a public F1 feed contains: speed, throttle, an on/off brake flag, gear, RPM and position, all at 4 Hz. Sim data is degraded to look like that. Accelerations rebuilt from position match the sim's own accelerometer with correlations of 0.97 (lateral) and 0.91 (longitudinal).
 
+## Lock-up and wheelspin risk: predictive, calibrated, explained
+Each warning answers three questions: **how likely** (in the next second), **why**, and **what to do about it**.
+
+1. **Stage 1: telemetry pattern.** LightGBM on the shared telemetry features, trained without class re-weighting, so its
+   output is a real probability. On held-out driver sessions the calibration error is 0.2%: a "20%" really does lead to the
+   event about 1 time in 5. TreeSHAP splits every prediction into **Braking**, **Throttle**, **Speed & cornering**,
+   **Engine & gearing** and **Tyre heat history**.
+2. **Stage 2: demand vs grip, per car.** A logistic regression adds driver demand (braking and throttle demand, cornering
+   load) and measured tyre condition (surface temperature outside the 85–115 °C window, pressure off the operating target).
+   Its coefficients read as odds ratios:
+   - **Live simulator car** (fitted on an 8-minute calibration run with mixed styles and pressure set-ups):
+     - fronts 10 °C above the window multiply lock-up odds ×14
+     - hot rears multiply wheelspin odds ×3.2
+     - each psi of low rear pressure multiplies wheelspin odds ×1.3
+     - lock-up ROC-AUC improves 0.62 → 0.78 and calibration error falls 20% → 3%
+   - **Assetto Corsa data (used for real-race replays):** lock-ups and wheelspin are driven by how the driver brakes and
+     accelerates. Tyre temperature adds almost nothing, and we report that as found.
+3. **Prevention.** The factor that dominated over the last few corners becomes a plain instruction to the driver and pit
+   crew, for example "Front-left overheating (128 °C): lift and coast before the big stops" or "More throttle than the rears
+   can put down: short-shift out of slow corners". Sustained risk raises a MANAGE call on the pit wall and the crew phones.
+
+`python -m sidewall.models.risk` trains both stages and writes `models/weights/risk_metrics.json` (calibration tables and
+odds ratios).
+
 ## Guarding against overfitting (Tier B)
 The first version memorised races: training ROC-AUC 0.997 against 0.85 on held-out seasons. Weather columns alone
 scored 0.90 on training and 0.51 on test, because they identify individual races. `python -m sidewall.models.diagnostics`
@@ -80,7 +104,7 @@ Serve (phones on the same Wi-Fi scan the QR codes):
 ```bash
 .venv/Scripts/python -m sidewall.server.app
 ```
-Open http://localhost:8000. `/crew` is the pit-crew phone, `/driver` the phone controller and `/atlas` the Ollon insights.
+Open http://localhost:8000 and pick a path: replay a real race, drive it yourself, or explore the data. `/crew` is the pit-crew phone and `/driver` the phone controller (both reachable by QR code from the pit wall).
 
 Tests:
 ```bash

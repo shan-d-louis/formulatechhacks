@@ -28,6 +28,7 @@ class Scenario:
     from_lap: int
     to_lap: int
     what_happened: str
+    failure_lap: int | None = None   # lap of the real tyre failure, marked on the timeline
     # What-if only: inject a TPMS leak {wheel: (seconds after window start, gas fraction lost per minute)}.
     # Public F1 data has no pressure channel, so real replays never contain a leak unless one is injected.
     leaks: dict | None = None
@@ -36,10 +37,12 @@ class Scenario:
 SCENARIOS = {
     "silverstone2020": Scenario(
         "silverstone2020", "British GP 2020: Hamilton's front-left", 2020, 4, "HAM", 20, 52,
-        "Front-left tyre failed on the final lap after a ~40-lap stint on hards; won on three wheels."),
+        "Front-left tyre failed on the final lap after a ~40-lap stint on hards; won on three wheels.",
+        failure_lap=52),
     "baku2021": Scenario(
         "baku2021", "Azerbaijan GP 2021: Verstappen's left-rear", 2021, 6, "VER", 14, 46,
-        "Left-rear failed at ~300 km/h on lap 46 while leading; Pirelli blamed low running pressures."),
+        "Left-rear failed at ~300 km/h on lap 46 while leading; Pirelli blamed low running pressures.",
+        failure_lap=46),
     "silverstone2020_whatif": Scenario(
         "silverstone2020_whatif", "What-if: slow puncture injected (Silverstone 2020)", 2020, 4, "HAM", 20, 40,
         "Synthetic: a 0.8 %/min leak is injected on the front-left TPMS channel at lap ~24 to show the "
