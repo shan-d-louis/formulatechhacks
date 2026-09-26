@@ -1,0 +1,7 @@
+proxy_threshold,minimum_duration_s,wheel_events
+-0.1,0.08,147
+-0.1,0.15,72
+-0.2,0.08,5
+-0.2,0.15,2
+-0.3,0.08,4
+-0.3,0.15,2
