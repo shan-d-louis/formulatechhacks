@@ -296,6 +296,26 @@ python -m http.server 5500
 Open `http://localhost:5500/simulator/` and `http://localhost:5500/dashboard/`.
 Backend tests: `cd backend && python -m pytest -q tests`.
 
+## Model Serving API
+
+The SIDEWALL server also exposes the tyre-life model as a low-latency FastAPI surface.
+Small predictions stay on the API path, while replay rebuilds and heavier analytics are
+queued for a background worker so the API can respond immediately.
+
+```bash
+uv run python -m sidewall.server.app
+```
+
+- `GET /health` - service health and active laps-model source.
+- `GET /api/model/status` - model path, source, bundle metadata, CV metrics, and evidence limits.
+- `POST /api/predict/laps` - estimated laps remaining for one compound/age/track-temperature state.
+- `POST /api/jobs/replay` - enqueue replay analytics and return a job id with `202 Accepted`.
+- `GET /api/jobs/{job_id}` - poll queued/running/succeeded/failed status.
+- `GET /api/jobs/{job_id}/result` - read the completed replay result.
+
+Replay rebuilds should use `/api/jobs/replay`; direct `/api/replay/{key}?rebuild=true`
+is rejected so parquet/model-heavy work does not block the request path.
+
 ## Project Hygiene
 
 - Do not commit credentials, private tokens, raw large datasets, generated caches, or

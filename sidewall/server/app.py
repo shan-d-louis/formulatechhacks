@@ -12,22 +12,103 @@ import asyncio
 import io
 import json
 import socket
+import sys
+from typing import Any, Literal
 
 import qrcode
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from sidewall import config
 from sidewall.engine.monitor import load_bundles
+from sidewall.server.jobs import JOBS, JobRecord
+from sidewall.server.utils import short_git_hash
 from sidewall.sources import replay
 
 WEB = config.ROOT / "web"
+BACKEND_DIR = config.ROOT / "backend"
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+import laps as laps_model  # noqa: E402
+
 app = FastAPI(title="SIDEWALL")
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 BUNDLES = load_bundles()
+
+
+class LapsPredictionRequest(BaseModel):
+    """Request for a low-latency tyre-life estimate."""
+
+    compound: Literal["SOFT", "MEDIUM", "HARD"]
+    tire_age_laps: float = Field(ge=0.0)
+    track_temp_c: float | None = None
+
+
+class LapsPredictionResponse(BaseModel):
+    """Estimated laps remaining response."""
+
+    low: float
+    mid: float
+    high: float
+    source: Literal["lgbm", "baseline", "stub"]
+    model_version: str
+    evidence: Literal["estimated"] = "estimated"
+
+
+class AnalyticsJobRequest(BaseModel):
+    """Request to schedule heavy analytics outside the API request path."""
+
+    kind: Literal["replay"] = "replay"
+    scenario_key: str
+    rebuild: bool = False
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobStatusResponse(BaseModel):
+    """Public job status payload."""
+
+    job_id: str
+    kind: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    created_at: str
+    started_at: str | None
+    finished_at: str | None
+    progress: float
+    error: str | None
+    result_url: str | None = None
+
+
+def model_status() -> dict[str, Any]:
+    """Return the active laps model metadata without exposing raw model internals."""
+    bundle = getattr(laps_model, "_bundle", None)
+    return {
+        "ok": True,
+        "source": laps_model.source(),
+        "model_path": str(laps_model.DEFAULT_MODEL_PATH),
+        "model_version": short_git_hash(config.ROOT),
+        "bundle_version": bundle.get("version") if bundle else None,
+        "compounds": bundle.get("compounds") if bundle else None,
+        "quantiles": bundle.get("quantiles") if bundle else None,
+        "features": bundle.get("features") if bundle else None,
+        "cliff_delta_s": bundle.get("cliff_delta_s") if bundle else None,
+        "cv": bundle.get("cv") if bundle else None,
+        "evidence": "estimated",
+        "limits": [
+            "Public telemetry cannot confirm individual wheel lock-up without wheel-speed evidence.",
+            "Tyre pressure, temperature, wear, and failure risk are estimated unless directly measured.",
+        ],
+    }
+
+
+def job_status(job: JobRecord) -> dict[str, Any]:
+    """Build a public status response with a stable result URL when complete."""
+    payload = job.public()
+    payload["result_url"] = f"/api/jobs/{job.id}/result" if job.status == "succeeded" else None
+    return payload
 
 
 class Hub:
@@ -106,8 +187,64 @@ def scenarios():
 async def get_replay(key: str, rebuild: bool = False):
     if key not in replay.SCENARIOS:
         return JSONResponse({"error": "unknown scenario"}, status_code=404)
-    data = await asyncio.to_thread(replay.get_replay, key, BUNDLES, rebuild)
+    if rebuild:
+        raise HTTPException(status_code=409, detail="Use POST /api/jobs/replay for rebuild analytics.")
+    data = await asyncio.to_thread(replay.get_replay, key, BUNDLES, False)
     return JSONResponse(data)
+
+
+@app.get("/health")
+def health():
+    return {"ok": True, "model_source": laps_model.source()}
+
+
+@app.get("/api/model/status")
+def api_model_status():
+    return model_status()
+
+
+@app.post("/api/predict/laps", response_model=LapsPredictionResponse)
+def predict_laps(req: LapsPredictionRequest):
+    pred = laps_model.predict_laps(req.compound, req.tire_age_laps, req.track_temp_c)
+    return {
+        **pred,
+        "source": laps_model.source(),
+        "model_version": short_git_hash(config.ROOT),
+        "evidence": "estimated",
+    }
+
+
+@app.post("/api/jobs/replay", response_model=JobStatusResponse, status_code=202)
+async def enqueue_replay_job(req: AnalyticsJobRequest):
+    if req.scenario_key not in replay.SCENARIOS:
+        raise HTTPException(status_code=404, detail="unknown scenario")
+
+    async def run(job: JobRecord):
+        job.progress = 0.2
+        data = await asyncio.to_thread(replay.get_replay, req.scenario_key, BUNDLES, req.rebuild)
+        job.progress = 0.95
+        return data
+
+    job = await JOBS.enqueue(req.kind, run)
+    return job_status(job)
+
+
+@app.get("/api/jobs/{job_id}", response_model=JobStatusResponse)
+def get_job(job_id: str):
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="unknown job")
+    return job_status(job)
+
+
+@app.get("/api/jobs/{job_id}/result")
+def get_job_result(job_id: str):
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="unknown job")
+    if job.status != "succeeded":
+        raise HTTPException(status_code=409, detail=f"job is {job.status}")
+    return JSONResponse(job.result)
 
 
 @app.get("/api/metrics")
