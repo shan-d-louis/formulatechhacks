@@ -224,47 +224,87 @@ or the relevant local docs in the same pass.
 
 ## Setup
 
-This project uses Python 3.13 or newer.
+This project uses Python 3.13 or newer for the main SIDEWALL app. The easiest
+reproducible setup is with `uv`:
 
-## Run it
-Setup:
+```bash
+uv sync
+```
+
+If `uv` is not available, create a virtual environment and install the pinned runtime
+requirements:
+
 ```bash
 python -m venv .venv
-```
-```bash
 .venv/Scripts/python -m pip install -r requirements.txt
 ```
-Data and training (order matters):
+
+On macOS/Linux, replace `.venv/Scripts/python` with `.venv/bin/python`.
+
+## Start the Full-Stack App
+
+The recommended full-stack entrypoint is `sidewall.server.app`. It serves the
+FastAPI backend, model APIs, WebSocket relay, static browser UI, pit-wall dashboard,
+crew phone, driver phone controller, live simulator, replay mode, and atlas from one
+process on port 8000.
+
 ```bash
-.venv/Scripts/python -m sidewall.data.ingest_fastf1 --telemetry
+uv run python -m sidewall.server.app
 ```
-```bash
-.venv/Scripts/python -m sidewall.data.ingest_acgym
-```
-```bash
-.venv/Scripts/python -m sidewall.data.build_stints
-```
-```bash
-.venv/Scripts/python -m sidewall.models.event_detectors --rebuild
-```
-```bash
-.venv/Scripts/python -m sidewall.twin.virtual_tpms
-```
-```bash
-.venv/Scripts/python -m sidewall.models.tyre_life
-```
-```bash
-.venv/Scripts/python -m sidewall.data.build_atlas
-```
-Serve (phones on the same Wi-Fi scan the QR codes):
+
+Without `uv`:
+
 ```bash
 .venv/Scripts/python -m sidewall.server.app
 ```
-Open http://localhost:8000 and pick a path: replay a real race, drive it yourself, or explore the data. `/crew` is the pit-crew phone and `/driver` the phone controller (both reachable by QR code from the pit wall).
+
+Then open:
+
+- `http://localhost:8000/` - landing page with all demo paths.
+- `http://localhost:8000/pitwall?mode=replay` - replay a real race scenario.
+- `http://localhost:8000/pitwall?mode=live` - run the live phone-driven simulator
+  and pit-wall frontend.
+- `http://localhost:8000/crew` - pit-crew phone view.
+- `http://localhost:8000/driver` - phone throttle/brake controller.
+- `http://localhost:8000/atlas` - tyre-safety data atlas.
+- `http://localhost:8000/docs` - FastAPI API docs.
+
+For the live demo, start the server on the laptop, open `/pitwall?mode=live`, then use
+the QR buttons on the pit wall to connect phones on the same Wi-Fi. The server binds to
+`0.0.0.0` and `/api/qr` generates LAN URLs for `/crew` and `/driver`.
+
+If you see a page that says **Backend offline**, you are probably on the older
+`simulator/` or `dashboard/` UI. The full-stack app's live frontend is
+`http://localhost:8000/pitwall?mode=live`.
+
+Useful health checks:
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/api/model/status
+```
+
+If you want to regenerate the checked-in demo data and model artifacts before serving,
+run the pipeline in this order:
+
+```bash
+uv run python -m sidewall.data.ingest_fastf1 --telemetry
+uv run python -m sidewall.data.ingest_acgym
+uv run python -m sidewall.data.build_stints
+uv run python -m sidewall.models.event_detectors --rebuild
+uv run python -m sidewall.twin.virtual_tpms
+uv run python -m sidewall.models.tyre_life
+uv run python -m sidewall.data.build_atlas
+```
+
+Those commands may download or refresh external data. The repository already includes
+demo outputs and model weights for local startup, so you do not need to run the data
+pipeline just to try the app.
 
 Tests:
+
 ```bash
-.venv/Scripts/python -m pytest -q tests
+uv run pytest -q
 ```
 
 ## Demo (about 4 minutes)
@@ -290,35 +330,51 @@ uv run python datasets/extract_kaggle_tyre_strategy.py --kaggle-dataset navenkum
 If `uv` is not available, install dependencies with your preferred Python environment
 manager using `pyproject.toml` as the source of truth.
 
-## Live Pit-Wall Pipeline
+## Lower-Level Simulator Pipeline
 
-Browser simulator → FastAPI backend → pit-wall dashboard, over WebSockets at 10 Hz.
-Message formats (raw frames in, output frames out) are specified in `contracts.md`. Tyre temperatures and pressures here are simulated, not real.
+Most users should start the full app with `uv run python -m sidewall.server.app`.
+The repository also keeps an older, lower-level simulator pipeline for testing the raw
+browser simulator against the lightweight backend directly.
 
-- `simulator/` - drivable car in the browser; sends raw sensor frames only.
-- `backend/` - features, detectors, alert engine, Tyre Health Index, laps estimate.
-- `dashboard/` - displays output frames only.
-- `training/` - offline laps model: `fetch.py` (FastF1 2023-24 dry races), `prepare.py`
-  (clean laps, fuel-correct, lap-time delta target), `train.py` (baseline curve + LightGBM
-  quantile models, grouped CV by race). Saves `laps_model.joblib`, which the backend loads.
+Browser simulator -> FastAPI backend -> pit-wall dashboard, over WebSockets at 10 Hz.
+Message formats are specified in `contracts.md`. Tyre temperatures and pressures here
+are simulated, not real.
+
+- `simulator/` - drivable browser car; sends raw sensor frames only.
+- `backend/` - feature extraction, detectors, alert engine, Tyre Health Index, and
+  laps estimate.
+- `dashboard/` - displays analysed backend output frames only.
+- `training/` - offline laps model scripts. `training/train.py` saves
+  `training/laps_model.joblib`, which the lightweight backend loads.
 - `backend/scenarios.py` - runs the demo scenarios headless through the backend.
 
-The backend's dependencies are in `requirements.txt` for now (not yet merged into
-`pyproject.toml`); it runs on Python 3.11+.
+Run it with two terminals from the repository root:
 
 ```bash
-pip install -r requirements.txt
-cd backend && uvicorn main:app --reload --port 8000
+uv run uvicorn backend.main:app --reload --port 8001
 ```
-
-In a second terminal, from the repository root:
 
 ```bash
 python -m http.server 5500
 ```
 
-Open `http://localhost:5500/simulator/` and `http://localhost:5500/dashboard/`.
-Backend tests: `cd backend && python -m pytest -q tests`.
+Then open both browser pages:
+
+- `http://localhost:5500/simulator/?backend=localhost:8001` - sends raw simulated
+  tyre sensor frames to `ws://localhost:8001/ws/sim`.
+- `http://localhost:5500/dashboard/?backend=localhost:8001` - dashboard UI that reads
+  analysed frames from `ws://localhost:8001/ws/dash`.
+
+The dashboard will show **Backend offline** until `backend.main` is running and the
+`backend=localhost:8001` query parameter points at the same port. After the dashboard
+connects, it may still say it is waiting for frames until the simulator page is open
+and sending data.
+
+Backend-specific tests:
+
+```bash
+uv run pytest -q backend/tests
+```
 
 ## Model Serving API
 
