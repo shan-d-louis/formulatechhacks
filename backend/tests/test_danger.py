@@ -60,7 +60,8 @@ def test_fresh_healthy_set_reaches_danger_before_the_pace_cliff():
     d = out["danger"]
     assert d["now"] is False
     assert d["low"] <= d["mid"] <= d["high"]
-    assert 25 < d["mid"] < out["laps_remaining"]["mid"]  # health goes red before the pace cliff
+    # health goes red before the pace cliff: on a fresh set at about 84% of the cliff (wear 16 = THI 48)
+    assert 0.75 * out["laps_remaining"]["mid"] < d["mid"] < out["laps_remaining"]["mid"]
     assert all(t["laps_to_danger"] == pytest.approx(d["mid"], abs=0.2) for t in out["tires"].values())
 
 
@@ -86,8 +87,9 @@ def test_damaged_tire_has_fewer_laps_and_is_named():
     main.tire_states["RL"].damage_penalty = 30.0  # e.g. repeated wheelspin
     out = settle(n=3, t0=20.0)  # clock keeps going (going backwards would mean a sim restart)
     assert out["danger"]["tire"] == "RL"
-    # damage 70 (weight 0.2) moves the danger point ~1 lap earlier: 29.5 vs 30.6 on a fresh MEDIUM
-    assert out["tires"]["RL"]["laps_to_danger"] == pytest.approx(out["tires"]["RR"]["laps_to_danger"] - 1.1, abs=0.2)
+    # damage 70 (weight 0.2) moves the danger point ~3.7% earlier (about 1 lap on a fresh MEDIUM)
+    rl, rr = out["tires"]["RL"]["laps_to_danger"], out["tires"]["RR"]["laps_to_danger"]
+    assert rl == pytest.approx(rr * 0.963, abs=0.2)
 
 
 def test_critical_puncture_is_danger_now():
@@ -105,7 +107,7 @@ def test_already_red_tire_is_danger_now():
 def test_new_stint_resets_danger():
     settle(rr_psi_offset=-2.0)
     out = settle(n=3, t0=20.0, stint_id=2)
-    assert out["danger"]["now"] is False and out["danger"]["mid"] > 25
+    assert out["danger"]["now"] is False and out["danger"]["mid"] > 0.75 * out["laps_remaining"]["mid"]
 
 
 def test_untouched_tire_counts_as_healthy():
@@ -164,14 +166,16 @@ def test_heat_damage_lowers_it_after_cooling():
     settle(n=100, temp=128.0)  # 10 s over the limit: heat damage
     out = settle(n=50, t0=30.0, temp=100.0)  # back in the window, no longer critical
     assert out["danger"]["now"] is False
-    # 10 s over 118 °C -> heat damage 15 -> thermal 85 (weight 0.2) -> about 0.5 laps sooner, and it stays after cooling
-    healthy = 30.6  # fresh MEDIUM, no lasting harm
-    assert out["tires"]["FL"]["laps_to_danger"] == pytest.approx(healthy - 0.5, abs=0.15)
+    # 10 s over 118 °C -> heat damage 15 -> thermal 85 (weight 0.2) -> ~1.6% sooner, and it stays after cooling
+    healthy = health.laps_to_danger(TireState("FL"), 0.0, out["laps_remaining"]["mid"])  # same set, no lasting harm
+    assert out["tires"]["FL"]["laps_to_danger"] == pytest.approx(healthy * 0.984, abs=0.15)
+    assert out["tires"]["FL"]["laps_to_danger"] < healthy
 
 
 def test_slow_leak_lowers_it_before_it_is_critical():
     out = settle(rr_psi_offset=-1.0)  # 1 psi of air lost: warning, not critical
     assert out["tires"]["RR"]["flags"]["pressure"] == "warning"
     assert out["danger"]["tire"] == "RR" and out["danger"]["now"] is False
-    # 1 psi lost -> pressure 64 (weight 0.2) -> about 1.5 laps sooner: 29.1 vs 30.6
-    assert out["tires"]["RR"]["laps_to_danger"] == pytest.approx(out["tires"]["FL"]["laps_to_danger"] - 1.5, abs=0.2)
+    # 1 psi lost -> pressure 64 (weight 0.2) -> ~4.7% sooner (about 1.2-1.5 laps on a fresh MEDIUM)
+    fl, rr = out["tires"]["FL"]["laps_to_danger"], out["tires"]["RR"]["laps_to_danger"]
+    assert rr == pytest.approx(fl * 0.953, abs=0.2)
