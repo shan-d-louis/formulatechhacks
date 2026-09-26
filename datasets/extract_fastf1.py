@@ -239,7 +239,7 @@ def main(sets: list[dict] | None = None):
     )
     parser.add_argument("--driver", type=str, help="Driver code, e.g. 'VER'")
     parser.add_argument(
-        "--out", type=str, default="telemetry_output.csv",
+        "--out", type=str, default="outputs/telemetry_output.csv",
         help="Output CSV path (default: telemetry_output.csv)",
     )
     args = parser.parse_args()
