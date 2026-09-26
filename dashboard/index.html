@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pit Wall</title>
+<style>
+  :root {
+    --bg:#0b0e13; --panel:#151a21; --panel2:#10141a; --line:#262d38; --text:#e8eaed; --dim:#8a93a0;
+    --ok:#3ecf8e; --warn:#ffb020; --bad:#ff5d5d; --acc:#4ea1ff; --none:#3a4250;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; font-variant-numeric:tabular-nums; }
+
+  /* Header */
+  header { display:flex; flex-wrap:wrap; align-items:center; gap:10px 28px; padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; letter-spacing:.06em; }
+  .conn { display:flex; align-items:center; gap:8px; color:var(--dim); font-size:13px; margin-left:auto; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--bad); }
+  .dot.on { background:var(--ok); } .dot.stale { background:var(--warn); }
+  .stat { display:flex; flex-direction:column; min-width:64px; }
+  .stat .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+  .stat .v { font-size:20px; font-weight:600; }
+
+  /* Layout */
+  main { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:16px; padding:16px 20px; }
+  @media (max-width:1000px) { main { grid-template-columns:minmax(0,1fr); } }
+  @media (max-width:640px) { header, main { padding-left:16px; padding-right:16px; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 10px; font-weight:600; }
+  .side { display:flex; flex-direction:column; gap:16px; min-width:0; }
+
+  /* Car + tire cards */
+  .car-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(150px,210px) minmax(0,1fr); grid-template-rows:1fr 1fr; gap:14px; }
+  .car-svg { grid-column:2; grid-row:1 / span 2; align-self:center; width:100%; height:auto; }
+  @media (max-width:640px) {
+    .car-grid { grid-template-columns:minmax(0,1fr); grid-template-rows:auto; }
+    .car-svg { grid-column:1; grid-row:1; max-width:170px; justify-self:center; }
+  }
+  .tire-svg { fill:var(--none); stroke:#0b0e13; stroke-width:2; transition:fill .25s; }
+  .tire-svg.ok { fill:var(--ok); } .tire-svg.warn { fill:var(--warn); } .tire-svg.bad { fill:var(--bad); }
+  .tire-svg.alarm { animation:pulse .8s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity:.45; } }
+  .tire-thi { font:700 15px system-ui, sans-serif; fill:#0b0e13; text-anchor:middle; dominant-baseline:central; }
+
+  .card { background:var(--panel2); border:2px solid var(--none); border-radius:10px; padding:12px; min-width:0; transition:border-color .25s; }
+  .card.ok { border-color:var(--ok); } .card.warn { border-color:var(--warn); } .card.bad { border-color:var(--bad); }
+  .card .top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .card .name { font-weight:700; color:var(--dim); letter-spacing:.06em; }
+  .card .status { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; padding:2px 7px; border-radius:4px; background:#1e2530; color:var(--dim); }
+  .card.ok .status { color:var(--ok); } .card.warn .status { color:var(--warn); background:rgba(255,176,32,.14); } .card.bad .status { color:var(--bad); background:rgba(255,93,93,.16); }
+  .card .thi { font-size:44px; font-weight:750; line-height:1; margin-top:6px; }
+  .card.ok .thi { color:var(--ok); } .card.warn .thi { color:var(--warn); } .card.bad .thi { color:var(--bad); }
+  .card .reason { color:var(--dim); font-size:12px; margin:2px 0 10px; }
+  .card .reason b { color:var(--text); font-weight:600; }
+  .readings { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .reading .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+  .reading .v { font-size:20px; font-weight:600; }
+  .reading .sub { color:var(--dim); font-size:12px; }
+  .comps { display:grid; grid-template-columns:auto 1fr 28px; gap:3px 8px; align-items:center; margin-top:10px; font-size:12px; color:var(--dim); }
+  .comps .bar { height:5px; background:#1e2530; border-radius:3px; overflow:hidden; }
+  .comps .bar > div { height:100%; background:var(--dim); }
+  .comps .n { text-align:right; color:var(--text); }
+  .comps .low .bar > div { background:var(--text); }
+  .flags { display:flex; flex-wrap:wrap; gap:4px; margin-top:10px; }
+  .flag { font-size:11px; padding:2px 6px; border-radius:4px; background:#1e2530; color:var(--dim); }
+  .flag.on, .flag.warning { background:rgba(255,176,32,.18); color:var(--warn); }
+  .flag.critical { background:rgba(255,93,93,.22); color:var(--bad); font-weight:600; }
+
+  /* Driver inputs */
+  .inputs { display:grid; grid-template-columns:64px 1fr 44px; gap:6px 10px; align-items:center; margin-top:16px; font-size:13px; }
+  .inputs .bar { height:8px; background:#1e2530; border-radius:4px; overflow:hidden; position:relative; }
+  .inputs .bar > div { height:100%; width:0; }
+  #bStr { position:absolute; left:50%; background:var(--dim); }
+
+  /* Laps remaining */
+  .laps .mid { font-size:52px; font-weight:750; line-height:1; }
+  .laps .unit { color:var(--dim); font-size:14px; font-weight:500; margin-left:6px; }
+  .range { position:relative; height:26px; margin:18px 0 4px; }
+  .range .track { position:absolute; top:11px; left:0; right:0; height:4px; background:#1e2530; border-radius:2px; }
+  .range .band { position:absolute; top:7px; height:12px; background:rgba(78,161,255,.35); border:1px solid var(--acc); border-radius:6px; transition:left .3s, width .3s; }
+  .range .tick { position:absolute; top:3px; width:3px; height:20px; background:var(--text); border-radius:2px; transform:translateX(-50%); transition:left .3s; }
+  .range-labels { display:flex; justify-content:space-between; color:var(--dim); font-size:12px; }
+  .range-labels b { color:var(--text); font-weight:600; }
+
+  /* Alerts */
+  .alerts { list-style:none; margin:0; padding:0; max-height:56vh; overflow-y:auto; }
+  .alerts li { border-left:3px solid var(--warn); padding:7px 10px; margin-bottom:6px; background:var(--panel2); border-radius:0 6px 6px 0; }
+  .alerts li.bad, .alerts li.critical { border-left-color:var(--bad); }
+  .alerts li.fresh { animation:flash 1.2s ease-out; }
+  @keyframes flash { from { background:#2a3240; } }
+  .alerts .msg { font-weight:500; }
+  .alerts .meta { color:var(--dim); font-size:12px; margin-top:2px; }
+  .alerts .sev { text-transform:uppercase; font-weight:700; letter-spacing:.06em; }
+  .alerts li.warn .sev { color:var(--warn); } .alerts li.bad .sev, .alerts li.critical .sev { color:var(--bad); }
+  .empty { color:var(--dim); }
+
+  /* No-data overlay */
+  #overlay { position:fixed; inset:auto 0 0 0; padding:10px 20px; background:rgba(255,176,32,.12); border-top:1px solid var(--warn); color:var(--warn); text-align:center; font-weight:600; }
+  body.nodata main { opacity:.45; filter:grayscale(.6); transition:opacity .3s; }
+</style>
+</head>
+<body class="nodata">
+<header>
+  <h1>PIT WALL · TIRE MONITOR</h1>
+  <div class="stat"><span class="k">Lap</span><span class="v" id="lap">–</span></div>
+  <div class="stat"><span class="k">Time</span><span class="v" id="time">–</span></div>
+  <div class="stat"><span class="k">Speed</span><span class="v" id="speed">–</span></div>
+  <div class="conn" id="conn"><span class="dot" id="dot"></span><span id="connText">Backend offline</span></div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Car</h2>
+    <div class="car-grid">
+      <div class="card" id="card-FL"></div>
+      <svg class="car-svg" viewBox="0 0 200 380" role="img" aria-label="Top-down car with tire status">
+        <!-- body, nose at the top -->
+        <path d="M100 8 L112 60 L118 120 L140 150 L146 250 L136 300 L150 330 L150 362 L50 362 L50 330 L64 300 L54 250 L60 150 L82 120 L88 60 Z" fill="#1c2330" stroke="#2f3846" stroke-width="2"/>
+        <rect x="54" y="18" width="92" height="14" rx="3" fill="#232b38" stroke="#2f3846"/>   <!-- front wing -->
+        <rect x="46" y="350" width="108" height="20" rx="3" fill="#232b38" stroke="#2f3846"/> <!-- rear wing -->
+        <ellipse cx="100" cy="185" rx="16" ry="30" fill="#0f1318" stroke="#2f3846"/>          <!-- cockpit -->
+        <g id="svg-FL"><rect class="tire-svg" x="14" y="70" width="38" height="66" rx="8"/><text class="tire-thi" x="33" y="103">–</text></g>
+        <g id="svg-FR"><rect class="tire-svg" x="148" y="70" width="38" height="66" rx="8"/><text class="tire-thi" x="167" y="103">–</text></g>
+        <g id="svg-RL"><rect class="tire-svg" x="8" y="250" width="44" height="76" rx="9"/><text class="tire-thi" x="30" y="288">–</text></g>
+        <g id="svg-RR"><rect class="tire-svg" x="148" y="250" width="44" height="76" rx="9"/><text class="tire-thi" x="170" y="288">–</text></g>
+      </svg>
+      <div class="card" id="card-FR"></div>
+      <div class="card" id="card-RL"></div>
+      <div class="card" id="card-RR"></div>
+    </div>
+
+    <div class="inputs">
+      <span>Throttle</span><div class="bar"><div id="bThr" style="background:var(--ok)"></div></div><span id="vThr">–</span>
+      <span>Brake</span><div class="bar"><div id="bBrk" style="background:var(--bad)"></div></div><span id="vBrk">–</span>
+      <span>Steer</span><div class="bar"><div id="bStr"></div></div><span id="vStr">–</span>
+    </div>
+  </section>
+
+  <div class="side">
+    <section class="panel laps">
+      <h2>Laps remaining</h2>
+      <div><span class="mid" id="lapsMid">–</span><span class="unit">laps (mid)</span></div>
+      <div class="range" aria-hidden="true">
+        <div class="track"></div>
+        <div class="band" id="lapsBand"></div>
+        <div class="tick" id="lapsTick"></div>
+      </div>
+      <div class="range-labels"><span>low <b id="lapsLow">–</b></span><span>high <b id="lapsHigh">–</b></span></div>
+    </section>
+
+    <section class="panel">
+      <h2>Alerts</h2>
+      <ul class="alerts" id="alerts"><li class="empty" style="border:none;background:none">No alerts</li></ul>
+    </section>
+  </div>
+</main>
+
+<div id="overlay">Waiting for data…</div>
+
+<script>
+// Display only: renders output frames from the backend (see contracts.md).
+// No detection or scoring here; colors and labels come straight from the frame.
+const CORNERS = ['FL', 'FR', 'RL', 'RR'];
+const RECONNECT_MS = 2000;   // retry interval when the backend is offline
+const STALE_MS = 2000;       // no frame for this long → show "no data"
+const LAPS_SCALE_MIN = 20;   // laps range bar shows at least 0..this
+const backendHost = new URLSearchParams(location.search).get('backend') || 'localhost:8000';
+const WS_URL = `ws://${backendHost}/ws/dash`;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (x, d = 1) => (x == null || isNaN(x) ? '–' : Number(x).toFixed(d));
+const signed = (x, d) => (x == null || isNaN(x) ? '–' : (x > 0 ? '+' : '') + Number(x).toFixed(d));
+
+// ---------- Connection ----------
+let connected = false, lastFrameAt = 0;
+function connect() {
+  let retried = false;
+  const retry = () => {  // exactly one retry per socket, whichever of error/close fires first
+    if (retried) return;
+    retried = true;
+    connected = false;
+    updateConn();
+    setTimeout(connect, RECONNECT_MS);
+  };
+  let sock;
+  try { sock = new WebSocket(WS_URL); } catch (e) { return retry(); }
+  sock.onopen = () => { connected = true; updateConn(); };
+  sock.onclose = retry;
+  sock.onerror = () => { retry(); try { sock.close(); } catch (e) {} };
+  sock.onmessage = e => {
+    let frame;
+    try { frame = JSON.parse(e.data); } catch (err) { return; }
+    lastFrameAt = Date.now();
+    try { render(frame); } catch (err) { console.error('render failed', err, frame); }
+    updateConn();
+  };
+}
+
+function updateConn() {
+  const live = connected && Date.now() - lastFrameAt < STALE_MS;
+  $('dot').className = 'dot' + (connected ? (live ? ' on' : ' stale') : '');
+  $('connText').textContent = !connected ? 'Backend offline' : live ? 'Backend connected · live' : 'Backend connected · no data';
+  $('conn').title = WS_URL;
+  document.body.classList.toggle('nodata', !live);
+  $('overlay').hidden = live;
+  $('overlay').textContent = !connected ? `Backend offline. Retrying ${WS_URL} every ${RECONNECT_MS / 1000} s…` : 'Connected. Waiting for frames from the simulator…';
+}
+setInterval(updateConn, 500);
+
+// ---------- Rendering ----------
+const COMPONENTS = ['wear', 'thermal', 'pressure', 'damage'];
+const alarmed = f => f && (f.lockup || f.wheelspin || f.overheat === 'critical' || f.pressure === 'critical');
+
+function renderTire(name, t) {
+  const status = ['ok', 'warn', 'bad'].includes(t.status) ? t.status : '';
+
+  // Car diagram
+  const g = $('svg-' + name);
+  g.querySelector('rect').setAttribute('class', `tire-svg ${status}${alarmed(t.flags) ? ' alarm' : ''}`);
+  g.querySelector('text').textContent = t.thi ?? '–';
+
+  // Card
+  const c = t.components || {};
+  const f = t.flags || {};
+  const card = $('card-' + name);
+  card.className = 'card ' + status;
+  card.innerHTML = `
+    <div class="top"><span class="name">${name}</span><span class="status">${esc(t.status || '–')}</span></div>
+    <div class="thi">${esc(t.thi ?? '–')}</div>
+    <div class="reason">THI · limited by <b>${esc(t.dominant || '–')}</b></div>
+    <div class="readings">
+      <div class="reading"><div class="k">Temp</div><div class="v">${fmt(t.temp_c)}<small> °C</small></div></div>
+      <div class="reading"><div class="k">Pressure</div><div class="v">${fmt(t.pressure_psi)}<small> psi</small></div>
+        <div class="sub">residual ${signed(t.pressure_residual, 2)}</div></div>
+    </div>
+    <div class="comps">
+      ${COMPONENTS.map(k => `<span class="${k === t.dominant ? 'low' : ''}">${k}</span>
+        <div class="bar ${k === t.dominant ? 'low' : ''}"><div style="width:${Math.max(0, Math.min(100, c[k] ?? 0))}%"></div></div>
+        <span class="n">${esc(c[k] ?? '–')}</span>`).join('')}
+    </div>
+    <div class="flags">
+      <span class="flag ${f.lockup ? 'on' : ''}">lock-up</span>
+      <span class="flag ${f.wheelspin ? 'on' : ''}">wheelspin</span>
+      <span class="flag ${esc(f.overheat)}">overheat: ${esc(f.overheat ?? '–')}</span>
+      <span class="flag ${esc(f.pressure)}">pressure: ${esc(f.pressure ?? '–')}</span>
+    </div>`;
+}
+
+function renderLaps(L) {
+  if (!L) return;
+  $('lapsMid').textContent = fmt(L.mid);
+  $('lapsLow').textContent = fmt(L.low);
+  $('lapsHigh').textContent = fmt(L.high);
+  const scale = Math.max(LAPS_SCALE_MIN, (L.high || 0) * 1.2);
+  const pct = x => `${Math.max(0, Math.min(100, (x / scale) * 100))}%`;
+  $('lapsBand').style.left = pct(L.low);
+  $('lapsBand').style.width = `calc(${pct(L.high)} - ${pct(L.low)})`;
+  $('lapsTick').style.left = pct(L.mid);
+}
+
+const seenAlerts = new Set();
+function renderAlerts(alerts) {
+  if (!alerts || !alerts.length) {
+    $('alerts').innerHTML = '<li class="empty" style="border:none;background:none">No alerts</li>';
+    return;
+  }
+  $('alerts').innerHTML = alerts.map(a => {
+    const key = `${a.tire}|${a.t}`;  // an alert is updated in place, so key on start time + tire
+    const fresh = !seenAlerts.has(key);
+    seenAlerts.add(key);
+    return `<li class="${esc(a.severity)}${fresh ? ' fresh' : ''}">
+      <div class="msg">${esc(a.message)}</div>
+      <div class="meta"><span class="sev">${esc(a.severity)}</span> · ${esc(a.tire)} · lap ${esc(a.lap)} · ${fmt(a.t)} s</div>
+    </li>`;
+  }).join('');
+}
+
+function render(fr) {
+  $('lap').textContent = fr.lap ?? '–';
+  $('time').textContent = fmt(fr.timestamp) + ' s';
+  const car = fr.car || {};
+  $('speed').textContent = car.speed_kph == null ? '–' : Math.round(car.speed_kph) + ' kph';
+  $('bThr').style.width = (car.throttle || 0) * 100 + '%'; $('vThr').textContent = fmt(car.throttle, 2);
+  $('bBrk').style.width = (car.brake || 0) * 100 + '%'; $('vBrk').textContent = fmt(car.brake, 2);
+  const s = Math.max(-1, Math.min(1, car.steer || 0));
+  $('bStr').style.width = Math.abs(s) * 50 + '%';
+  $('bStr').style.transform = s < 0 ? 'translateX(-100%)' : 'none';
+  $('vStr').textContent = fmt(car.steer, 2);
+
+  renderLaps(fr.laps_remaining);
+  for (const c of CORNERS) if (fr.tires && fr.tires[c]) renderTire(c, fr.tires[c]);
+  renderAlerts(fr.alerts);
+}
+
+updateConn();
+connect();
+</script>
+</body>
+</html>
