@@ -32,8 +32,8 @@ context change together over time.
 ## Domain Context
 
 - **Input data**: Public FastF1/OpenF1 telemetry, race-control/status data, weather,
-  tyre stint metadata, simulated telemetry, and optional higher-frequency per-wheel
-  datasets when available.
+  tyre stint metadata, Kaggle F1 tyre strategy stint summaries, simulated telemetry,
+  and optional higher-frequency per-wheel datasets when available.
 - **Output**: Tyre health/risk indicators, possible lock-up/braking anomaly flags,
   overheating/cold-tyre/pressure-anomaly alerts, laps-to-cliff estimates, fatigue or
   stint-cap guidance, and explainable pit-wall calls.
