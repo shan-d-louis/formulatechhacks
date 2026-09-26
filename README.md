@@ -39,6 +39,56 @@ Expected data sources include:
 - **Local demos**: simulated or phone-driven inputs for driver, crew, replay, or
   pit-wall experiences.
 
+### TyreFrame Normalization
+
+SIDEWALL maps source exports into hierarchical `TyreFrame` tables rather than one
+flat row-level join. `outputs/telemetry_output.csv` and `outputs/openf1_output.csv`
+provide public F1 macro context such as driver, elapsed time, speed, throttle, brake,
+RPM, compound, tyre life, and weather. `datasets/spa/event_windows.csv` and
+`datasets/spa/candidate_events.csv` provide simulator micro-behaviour at event/window
+level, including wheel speeds, slip proxies, pressures, and tyre temperatures when
+the simulator supplies them. `outputs/kaggle_tyre_strategy_output.csv` provides
+stint-level compound, stint length, and weather context for degradation and
+laps-to-cliff experiments.
+
+The normalization step enforces lowercase snake_case names, converts source
+timestamps into cumulative `elapsed_s`, flags unavailable public F1 tyre pressure,
+temperature, wheel-speed, and slip channels as `estimated_via_twin = True`, and keeps
+macro lap/stint context separate from high-frequency simulator windows to avoid
+leakage between neighbouring braking zones.
+
+```bash
+uv run python datasets/normalize_tyreframe.py
+```
+
+The command writes hierarchical CSVs under `outputs/tyreframe/`: `macro_telemetry`,
+`macro_laps`, `stints`, `candidate_events`, `micro_event_windows`, and a row-count
+`manifest`. Use chronological or circuit/session-level splits for training rather
+than random row splits when building lock-up, wheelspin, or cliff-forecast models.
+
+For the checked-in local extracts used on this branch, reproducibility means the
+source and normalized row counts should remain stable unless an extraction is
+intentionally refreshed. After running the command above, verify
+`outputs/tyreframe/manifest.csv` against these expected counts:
+
+| Manifest record | Expected rows |
+|---|---:|
+| `source_table: fastf1` | 70,801 |
+| `source_table: openf1` | 123,156 |
+| `source_table: stints` | 1,010 |
+| `source_table: candidate_events` | 5 |
+| `source_table: event_windows` | 1,334 |
+| `output_table: macro_telemetry` | 193,957 |
+| `output_table: macro_laps` | 210 |
+| `output_table: stints` | 1,010 |
+| `output_table: candidate_events` | 5 |
+| `output_table: micro_event_windows` | 1,334 |
+| `total: source_records` | 196,306 |
+| `total: output_records` | 196,516 |
+
+If these totals change, document why in the same change as the data refresh or
+normalization update.
+
 ### Target Open Datasets and APIs
 
 | Source | Access | Useful fields | SIDEWALL use |
