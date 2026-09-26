@@ -50,8 +50,18 @@ def combine(components: dict) -> float:
     return 100.0 * math.prod((components[k] / 100.0) ** w for k, w in config.THI_WEIGHTS.items())
 
 
+def cap_cause(overheat: str, pressure: str) -> str | None:
+    """Which critical state caps the THI: "pressure" (checked first: a puncture is the more urgent
+    call for the crew), "thermal", or None when nothing is critical."""
+    if pressure == "critical":
+        return "pressure"
+    if overheat == "critical":
+        return "thermal"
+    return None
+
+
 def apply_critical_cap(thi: float, overheat: str, pressure: str) -> float:
-    if overheat == "critical" or pressure == "critical":
+    if cap_cause(overheat, pressure) is not None:
         return min(thi, config.THI_CRITICAL_CAP)
     return thi
 
@@ -69,9 +79,9 @@ def next_status(prev: str, thi: float) -> str:
     return "warn" if thi < config.STATUS_WARN_ENTER else "ok"
 
 
-def dominant(components: dict) -> str:
-    """The lowest component: what is limiting the tire."""
-    return min(COMPONENTS, key=lambda k: components[k])
+def dominant(components: dict, cause: str | None = None) -> str:
+    """What limits the tire: the cause of the critical cap if there is one, else the lowest component."""
+    return cause or min(COMPONENTS, key=lambda k: components[k])
 
 
 def tire_health(st: TireState, temp_c: float, pressure_psi: float, residual: float,
@@ -87,11 +97,13 @@ def tire_health(st: TireState, temp_c: float, pressure_psi: float, residual: flo
         "pressure": st.pressure_score,
         "damage": damage_component(st.damage_penalty),
     }
+    cause = cap_cause(st.overheat, st.pressure)
     thi = apply_critical_cap(combine(components), st.overheat, st.pressure)
     st.status = next_status(st.status, thi)
     return {
         "thi": round(thi),
         "status": st.status,
-        "dominant": dominant(components),
+        "dominant": dominant(components, cause),
+        "capped": cause is not None,  # a critical alarm set the score, not just a low component
         "components": {k: round(v) for k, v in components.items()},
     }

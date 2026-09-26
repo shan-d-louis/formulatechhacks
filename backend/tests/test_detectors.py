@@ -173,7 +173,7 @@ def test_second_event_gets_new_alert_newest_first():
 
 def test_output_alerts_have_contract_fields_only():
     out = run(frame(i * 0.1, 250, brake=1.0, wheels={"FL": 120}) for i in range(3))
-    assert set(out["alerts"][0]) == {"severity", "tire", "message", "lap", "t"}
+    assert set(out["alerts"][0]) == {"severity", "tire", "message", "lap", "t", "pinned"}
 
 
 def test_alert_log_keeps_last_40():

@@ -53,6 +53,7 @@
   .card.ok .thi { color:var(--ok); } .card.warn .thi { color:var(--warn); } .card.bad .thi { color:var(--bad); }
   .card .reason { color:var(--dim); font-size:12px; margin:2px 0 10px; }
   .card .reason b { color:var(--text); font-weight:600; }
+  .card .reason.alarm, .card .reason.alarm b { color:var(--bad); font-weight:700; }
   .readings { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   .reading .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
   .reading .v { font-size:20px; font-weight:600; }
@@ -82,17 +83,24 @@
   .range .tick { position:absolute; top:3px; width:3px; height:20px; background:var(--text); border-radius:2px; transform:translateX(-50%); transition:left .3s; }
   .range-labels { display:flex; justify-content:space-between; color:var(--dim); font-size:12px; }
   .range-labels b { color:var(--text); font-weight:600; }
+  .stint { display:flex; flex-wrap:wrap; gap:6px; margin-top:14px; }
+  .stint span { font-size:12px; padding:3px 8px; border-radius:4px; background:#1e2530; color:var(--dim); }
+  .stint b { color:var(--text); font-weight:600; }
+  .stint .fast { background:rgba(78,161,255,.16); color:var(--acc); }
 
   /* Alerts */
   .alerts { list-style:none; margin:0; padding:0; max-height:56vh; overflow-y:auto; }
   .alerts li { border-left:3px solid var(--warn); padding:7px 10px; margin-bottom:6px; background:var(--panel2); border-radius:0 6px 6px 0; }
   .alerts li.bad, .alerts li.critical { border-left-color:var(--bad); }
+  .alerts li.info { border-left-color:var(--ok); }
+  .alerts li.pinned { background:rgba(255,93,93,.12); border-left-width:5px; }
+  .alerts .pin { font-size:10px; font-weight:700; letter-spacing:.08em; padding:1px 5px; border-radius:3px; background:var(--bad); color:#0b0e13; margin-right:6px; }
   .alerts li.fresh { animation:flash 1.2s ease-out; }
   @keyframes flash { from { background:#2a3240; } }
   .alerts .msg { font-weight:500; }
   .alerts .meta { color:var(--dim); font-size:12px; margin-top:2px; }
   .alerts .sev { text-transform:uppercase; font-weight:700; letter-spacing:.06em; }
-  .alerts li.warn .sev { color:var(--warn); } .alerts li.bad .sev, .alerts li.critical .sev { color:var(--bad); }
+  .alerts li.info .sev { color:var(--ok); } .alerts li.warn .sev { color:var(--warn); } .alerts li.bad .sev, .alerts li.critical .sev { color:var(--bad); }
   .empty { color:var(--dim); }
 
   /* No-data overlay */
@@ -147,6 +155,11 @@
         <div class="tick" id="lapsTick"></div>
       </div>
       <div class="range-labels"><span>low <b id="lapsLow">–</b></span><span>high <b id="lapsHigh">–</b></span></div>
+      <div class="stint">
+        <span>Tire age <b id="tireAge">–</b></span>
+        <span id="compound">–</span>
+        <span id="demoSpeed">–</span>
+      </div>
     </section>
 
     <section class="panel">
@@ -229,7 +242,9 @@ function renderTire(name, t) {
   card.innerHTML = `
     <div class="top"><span class="name">${name}</span><span class="status">${esc(t.status || '–')}</span></div>
     <div class="thi">${esc(t.thi ?? '–')}</div>
-    <div class="reason">THI · limited by <b>${esc(t.dominant || '–')}</b></div>
+    <div class="reason${t.capped ? ' alarm' : ''}">${t.capped
+        ? `Critical: <b>${esc(t.dominant === 'thermal' ? 'temperature' : t.dominant)}</b>`
+        : `Lowest: <b>${esc(t.dominant || '–')}</b>`}</div>
     <div class="readings">
       <div class="reading"><div class="k">Temp</div><div class="v">${fmt(t.temp_c)}<small> °C</small></div></div>
       <div class="reading"><div class="k">Pressure</div><div class="v">${fmt(t.pressure_psi)}<small> psi</small></div>
@@ -270,11 +285,20 @@ function renderAlerts(alerts) {
     const key = `${a.tire}|${a.t}`;  // an alert is updated in place, so key on start time + tire
     const fresh = !seenAlerts.has(key);
     seenAlerts.add(key);
-    return `<li class="${esc(a.severity)}${fresh ? ' fresh' : ''}">
-      <div class="msg">${esc(a.message)}</div>
+    return `<li class="${esc(a.severity)}${a.pinned ? ' pinned' : ''}${fresh ? ' fresh' : ''}">
+      <div class="msg">${a.pinned ? '<span class="pin">ACTIVE</span>' : ''}${esc(a.message)}</div>
       <div class="meta"><span class="sev">${esc(a.severity)}</span> · ${esc(a.tire)} · lap ${esc(a.lap)} · ${fmt(a.t)} s</div>
     </li>`;
   }).join('');
+}
+
+function renderStint(st) {
+  if (!st) return;
+  $('tireAge').textContent = `${fmt(st.tire_age_laps)} laps`;
+  $('compound').textContent = `${st.compound ?? '–'}${st.id != null ? ` · stint ${st.id}` : ''}`;
+  const x = st.demo_speed ?? 1;
+  $('demoSpeed').textContent = x > 1 ? `Demo: tires aging ${x}×` : 'Real-time aging';
+  $('demoSpeed').className = x > 1 ? 'fast' : '';
 }
 
 function render(fr) {
@@ -290,6 +314,7 @@ function render(fr) {
   $('vStr').textContent = fmt(car.steer, 2);
 
   renderLaps(fr.laps_remaining);
+  renderStint(fr.stint);
   for (const c of CORNERS) if (fr.tires && fr.tires[c]) renderTire(c, fr.tires[c]);
   renderAlerts(fr.alerts);
 }

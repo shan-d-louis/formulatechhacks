@@ -119,9 +119,11 @@ def fresh():
     main.reset_tires()
 
 
-def frame(t, age, compound="MEDIUM", temp=96.0):
+def frame(t, age, compound="MEDIUM", temp=96.0, stint_id=1):
     f = copy.deepcopy(RAW)
-    f.update(t=t, tire_age_laps=age, compound=compound)
+    f.update(t=t, tire_age_laps=age, compound=compound, stint_id=stint_id)
+    if stint_id is None:  # a sender without stint_id: backend falls back to age/compound changes
+        del f["stint_id"]
     for tire in f["tires"].values():
         tire["temp_c"] = temp
     return f
@@ -143,13 +145,15 @@ def test_process_tracks_temp_slope(fresh):
     assert main.tire_states["FL"].temp_slope > 0
 
 
-@pytest.mark.parametrize("next_frame", [
-    frame(20.1, 0.0),                    # tire age dropped: new set fitted
-    frame(20.1, 2.0, compound="SOFT"),   # compound changed
-    frame(1.0, 2.0),                     # sim restarted (time went backwards)
+@pytest.mark.parametrize("first_frame, next_frame", [
+    (frame(20.0, 2.0), frame(20.1, 0.0, stint_id=2)),                  # new set fitted
+    (frame(20.0, 2.0), frame(20.1, 20.0, stint_id=2)),                 # used set fitted (age goes up)
+    (frame(20.0, 2.0), frame(1.0, 2.0)),                               # sim restarted (time went backwards)
+    (frame(20.0, 2.0, stint_id=None), frame(20.1, 0.0, stint_id=None)),                   # no stint_id: age dropped
+    (frame(20.0, 2.0, stint_id=None), frame(20.1, 2.0, compound="SOFT", stint_id=None)),  # no stint_id: compound
 ])
-def test_new_tires_reset_state(fresh, next_frame):
-    main.process(frame(20.0, 2.0))
+def test_new_tires_reset_state(fresh, first_frame, next_frame):
+    main.process(first_frame)
     main.tire_states["RL"].damage_penalty = 25.0
     main.tire_states["RL"].pressure = "critical"
     main.process(next_frame)

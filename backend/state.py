@@ -33,8 +33,10 @@ class TireState:
     # Overheat / pressure flag states: "none" | "warning" | "critical"
     overheat: str = "none"
     pressure: str = "none"
-    overheat_alert_id: int | None = None
-    pressure_alert_id: int | None = None
+    overheat_alert_id: int | None = None  # latest overheat alert created
+    overheat_crit_alerted: bool = False  # a critical alert already went out this overheat episode
+    pressure_alert_id: int | None = None  # alert for the current pressure state, updated in place
+    pressure_worst: float = 0.0  # most negative residual in the current pressure state, psi
 
     # Accumulated damage (never recovers until new tires)
     heat_damage: float = 0.0  # from time above the hard temp limit, feeds thermal

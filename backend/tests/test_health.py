@@ -11,7 +11,6 @@ import pytest
 import config
 import features
 import health
-import laps
 import main
 from state import TireState
 from tests.test_passthrough import RAW
@@ -55,8 +54,9 @@ def test_fresh_healthy_tire_scores_above_90():
 
 def test_critical_pressure_scores_30_or_less():
     main.process(healthy_frame(10.0))
-    main.tire_states["RL"].pressure = "critical"  # set by the pressure detector once it exists
-    out = main.process(healthy_frame(10.1))
+    f = healthy_frame(10.1)
+    f["tires"]["RL"]["pressure_psi"] = round(features.expected_pressure(96.0) - 1.8, 2)  # 1.8 psi of air lost
+    out = main.process(f)
     assert out["tires"]["RL"]["thi"] <= 30
     assert out["tires"]["RL"]["status"] == "bad"
     assert out["tires"]["RL"]["flags"]["pressure"] == "critical"
@@ -174,17 +174,7 @@ def test_status_does_not_flicker_at_boundary():
     assert status == "warn"
 
 
-# ---------- Laps stub ----------
-
-def test_laps_stub_estimate():
-    assert laps.predict_laps("MEDIUM", 10.0, 35) == {"low": 16.0, "mid": 20.0, "high": 24.0}
-    assert laps.predict_laps("SOFT", 50.0, 35)["mid"] == 0.0
-
-
-def test_laps_stub_never_crashes():
-    assert laps.predict_laps("UNKNOWN", 0.0, 35)["mid"] == config.STUB_LIFE_DEFAULT
-    assert laps.predict_laps(None, "garbage", None) == config.FALLBACK_LAPS
-
+# ---------- Wear (laps model itself is tested in test_laps.py) ----------
 
 def test_wear_falls_as_tire_ages():
     new = run(3, age=0.0)["tires"]["FL"]["components"]["wear"]

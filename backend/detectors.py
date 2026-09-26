@@ -1,7 +1,7 @@
-"""Detectors: lock-up and wheelspin (overheat and pressure come next).
+"""Detectors: lock-up, wheelspin, overheating and pressure anomaly.
 
-Each detector reads one frame's features, updates its event in TireState
-(hold timer, peak, damage), and returns a SlipResult describing what happened
+Each detector reads one frame's features, updates its state in TireState
+(hold timer, peak, flag, damage), and returns a result describing what happened
 this frame. Turning results into alerts is alerts.py's job.
 """
 
@@ -83,3 +83,81 @@ def detect_wheelspin(st: TireState, slip: float, throttle: float, speed_kph: flo
     if r.phase in (STARTED, ACTIVE):
         st.damage_penalty += slip * kph_to_mps(speed_kph) * dt * config.WHEELSPIN_DAMAGE_K
     return r
+
+
+# ---------- Overheating ----------
+
+NONE, WARNING, CRITICAL = "none", "warning", "critical"
+
+
+@dataclass
+class OverheatResult:
+    prev: str  # flag state before this frame
+    state: str  # flag state after this frame
+    temp: float  # °C this frame
+    forecast: float  # °C expected OVERHEAT_FORECAST_S from now
+
+
+def overheat_forecast(temp_c: float, slope_c_per_s: float) -> float:
+    """Where the temperature is heading: temp + slope * horizon."""
+    return temp_c + slope_c_per_s * config.OVERHEAT_FORECAST_S
+
+
+def next_overheat_state(prev: str, temp_c: float, forecast_c: float) -> str:
+    """Flag state machine with hysteresis.
+
+    critical above the hard limit, and stays critical until clearly below it;
+    warning above the warn temp or when the forecast passes the limit;
+    back to none only when both temp and forecast are comfortably low.
+    """
+    if temp_c > config.TEMP_HARD_LIMIT_C:
+        return CRITICAL
+    if prev == CRITICAL and temp_c >= config.OVERHEAT_CRIT_CLEAR_C:
+        return CRITICAL
+    if prev in (WARNING, CRITICAL):
+        cleared = temp_c < config.OVERHEAT_CLEAR_TEMP_C and forecast_c < config.OVERHEAT_CLEAR_FORECAST_C
+        return NONE if cleared else WARNING
+    if temp_c > config.OVERHEAT_WARN_TEMP_C or forecast_c > config.OVERHEAT_WARN_FORECAST_C:
+        return WARNING
+    return NONE
+
+
+def detect_overheat(st: TireState, temp_c: float, dt: float = config.DT) -> OverheatResult:
+    """Update the overheat flag and heat damage. Uses the smoothed slope already in st."""
+    forecast = overheat_forecast(temp_c, st.temp_slope)
+    prev = st.overheat
+    st.overheat = next_overheat_state(prev, temp_c, forecast)
+    if temp_c > config.TEMP_HARD_LIMIT_C:  # heat damage never recovers
+        st.heat_damage += (temp_c - config.TEMP_HARD_LIMIT_C) * dt * config.HEAT_DAMAGE_K
+    return OverheatResult(prev, st.overheat, temp_c, forecast)
+
+
+# ---------- Pressure anomaly ----------
+
+@dataclass
+class PressureResult:
+    prev: str  # flag state before this frame
+    state: str  # flag state after this frame
+    residual: float  # actual - expected pressure this frame, psi
+
+
+def next_pressure_state(prev: str, residual: float) -> str:
+    """Flag state machine on the pressure residual, with hysteresis.
+
+    The residual compares against the pressure expected at the current temperature, so a leaking
+    tire is caught while it warms up and its absolute pressure still looks normal.
+    """
+    if residual < config.PRESSURE_CRIT_RESIDUAL:
+        return CRITICAL
+    if prev == CRITICAL and residual <= config.PRESSURE_CRIT_CLEAR_RESIDUAL:
+        return CRITICAL
+    if prev in (WARNING, CRITICAL):
+        return NONE if residual > config.PRESSURE_CLEAR_RESIDUAL else WARNING
+    return WARNING if residual < config.PRESSURE_WARN_RESIDUAL else NONE
+
+
+def detect_pressure(st: TireState, residual: float) -> PressureResult:
+    """Update the pressure flag from this frame's residual."""
+    prev = st.pressure
+    st.pressure = next_pressure_state(prev, residual)
+    return PressureResult(prev, st.pressure, residual)

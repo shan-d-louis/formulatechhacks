@@ -16,7 +16,8 @@ T_COLD_C = 85.0  # reference temperature for expected pressure, °C
 KELVIN_OFFSET = 273.0  # °C → K for the gas-law pressure estimate
 
 # ---------- New-tire detection (main.py) ----------
-NEW_TIRE_AGE_DROP_LAPS = 0.05  # tire_age_laps falling by more than this means a fresh set was fitted
+NEW_TIRE_AGE_DROP_LAPS = 0.05  # (frames without stint_id) tire_age_laps falling by more than this = new set
+USED_TIRE_MIN_AGE_LAPS = 0.5  # a stint starting at this tire age or more is announced as used tires
 
 # ---------- Lock-up (front tires) ----------
 LOCKUP_SLIP = -0.15  # slip below this counts as locking
@@ -42,12 +43,14 @@ OVERHEAT_WARN_TEMP_C = 112.0  # current temp above this → "warning"
 OVERHEAT_WARN_FORECAST_C = 118.0  # forecast temp above this → "warning"
 OVERHEAT_CLEAR_TEMP_C = 108.0  # clear to "none" only when temp is below this...
 OVERHEAT_CLEAR_FORECAST_C = 115.0  # ...and forecast is below this (hysteresis)
+OVERHEAT_CRIT_CLEAR_C = 116.0  # critical drops back to warning only below this (hysteresis around the limit)
 HEAT_DAMAGE_K = 0.15  # damage per frame above limit: (temp - limit) * dt * K
 
 # ---------- Pressure anomaly ----------
 PRESSURE_CRIT_RESIDUAL = -1.5  # residual below this → "critical", psi
 PRESSURE_WARN_RESIDUAL = -0.6  # residual below this → "warning", psi
 PRESSURE_CLEAR_RESIDUAL = -0.4  # clear to "none" when residual rises above this, psi
+PRESSURE_CRIT_CLEAR_RESIDUAL = -1.2  # critical steps down to warning only above this (hysteresis), psi
 
 # ---------- Tire Health Index (health.py) ----------
 COMPONENT_MIN = 1  # each component clamped to [COMPONENT_MIN, COMPONENT_MAX]
@@ -71,10 +74,19 @@ STATUS_BAD_EXIT = 52  # THI above this → leave "bad"
 FUEL_S_PER_KG = 0.03  # lap-time gain per kg of fuel burned, s
 FUEL_KG_PER_LAP = 1.7  # fuel burned per lap, kg
 BASELINE_LAPS = (2, 4)  # stint laps whose median lap time is the baseline (inclusive)
+BASELINE_MIN_LAPS = 2  # clean laps needed inside BASELINE_LAPS, else the stint is dropped
+DRY_COMPOUNDS = ("SOFT", "MEDIUM", "HARD")  # compounds kept for training
+NEUTRALISED_TRACK_STATUS = "4567"  # FastF1 TrackStatus codes: 4 SC, 5 red flag, 6 VSC, 7 VSC ending
+DELTA_OUTLIER_S = 5.0  # |delta| above this is a spin/traffic/yellow lap, not tire wear; dropped
+STINT_MEDIAN_DELTA_FLOOR_S = -0.5  # stint median delta below this = baseline laps were compromised (traffic/restart); dropped
+TRAIN_AGE_QUANTILE = 0.95  # per compound, ignore tire ages above this quantile (rare managed stints bias the curve down)
 CLIFF_DELTA_S = 1.5  # laps remaining = first future lap with predicted delta above this
 QUANTILES = (0.1, 0.5, 0.9)  # low / mid / high model quantiles
 MAX_FORECAST_LAPS = 60  # stop rolling the model forward after this many laps
-MODEL_PATH = "laps_model.joblib"  # trained model, relative to backend/
+MODEL_PATH = "../training/laps_model.joblib"  # trained model (training/train.py), relative to backend/
+MODEL_AGE_OFFSET_LAPS = 1.0  # model age (FastF1 TyreLife, 1 on a fresh set's first lap) = tire_age_laps + this
+LAPS_CACHE_AGE_STEP = 0.05  # predictions are cached per this much tire age (laps); 10 Hz frames reuse them
+DEFAULT_TRACK_TEMP_C = 35.0  # used if a frame has no track temp
 FALLBACK_LAPS = {"low": 18.0, "mid": 22.0, "high": 26.0}  # used if no model or baseline is available
 STUB_LIFE_LAPS = {"SOFT": 20.0, "MEDIUM": 30.0, "HARD": 40.0}  # stub estimate: total stint life per compound
 STUB_LIFE_DEFAULT = 30.0  # stub life for an unknown compound
