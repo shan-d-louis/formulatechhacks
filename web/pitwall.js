@@ -101,7 +101,20 @@ function renderRisk(frame) {
     const factors = meaningful ? (e.factors || {}) : {};
     if (!meaningful) e.advice = "";
     const bar = Object.entries(factors).map(([f, s]) => `<i style="width:${100 * s}%;background:${FACTOR_COLOR[f] || "#666"}" title="${f} ${Math.round(100 * s)}%"></i>`).join("");
-    const keys = Object.entries(factors).slice(0, 4).map(([f, s]) => `<span><i style="background:${FACTOR_COLOR[f] || "#666"}"></i>${f} ${Math.round(100 * s)}%</span>`).join("");
+    // What is actually happening: one measured sentence per factor (top 3).
+    const ev = e.evidence || {};
+    const keys = Object.entries(factors).slice(0, 3).map(([f, s]) =>
+      `<div class="cause"><i style="background:${FACTOR_COLOR[f] || "#666"}"></i><b>${f} ${Math.round(100 * s)}%</b>${ev[f] ? `<span>${ev[f]}</span>` : ""}</div>`).join("");
+    // Grip budget: demand vs what the tyres can give.
+    const g = e.grip;
+    const axle = k === "lockup" ? "Fronts" : "Rears";
+    const gCol = !g ? "#3ab8ff" : g.pct >= 95 ? "#ff3040" : g.pct >= 80 ? "#ffc233" : "#2fd27a";
+    const gripHtml = g ? `
+      <div class="grip" title="Grip in use = the combined braking/traction and cornering acceleration the tyres are transmitting. Available = base grip x downforce x temperature window x pressure (${MODE === "live" ? "from the tyre sensors" : "estimated"}).">
+        <div class="gl"><span>${axle}: grip in use (${k === "lockup" ? "braking + cornering" : "traction + cornering"})</span><b>${g.use_g.toFixed(1)} g of ~${g.avail_g.toFixed(1)} g · ${Math.round(g.pct)}%</b></div>
+        <div class="gbar"><i style="width:${Math.min(100, g.pct)}%;background:${gCol}"></i></div>
+        ${g.condition_loss_pct >= 3 ? `<div class="sub">tyre temperature / pressure are costing ${Math.round(g.condition_loss_pct)}% of their grip right now</div>` : ""}
+      </div>` : "";
     const hot = (e.p_avg || 0) >= 0.08;
     el.className = `risk${hot ? " hot" : ""}`;
     const src = e.src === "sensor" ? "wheel-speed sensor" : e.src === "sensor+ml" ? "sensor + AI" : "AI";
@@ -109,8 +122,11 @@ function renderRisk(frame) {
       <div class="top"><span class="name">${name} ${e.on ? `<span class="flash">HAPPENING · ${src}</span>` : ""}</span>
         <span class="pct" style="color:${(e.p || 0) > .3 ? "#ff3040" : (e.p || 0) > .1 ? "#ffc233" : "#e8ebf0"}">${pct(e.p)}</span></div>
       <div class="sub">average over the last few corners: <b>${pct(e.p_avg)}</b></div>
+      ${gripHtml}
       <div class="stackbar">${bar}</div>
-      <div class="keys">${keys || "<span>no significant risk factors right now</span>"}</div>
+      <div class="causes">${keys || `<div class="muted" style="font-size:12px">${meaningful
+        ? `No single factor stands out: this is the car's baseline ${name.toLowerCase()} risk at this pace.`
+        : `No significant ${name.toLowerCase()} risk right now${g && g.pct < 80 ? `: the ${axle.toLowerCase()} have grip to spare` : ""}.`}</div>`}</div>
       ${e.advice ? `<div class="advice">${hot ? "⚠ " : ""}${e.advice}</div>` : ""}`;
   }
 }

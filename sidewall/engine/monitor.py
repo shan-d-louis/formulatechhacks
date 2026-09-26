@@ -12,6 +12,7 @@ from sidewall.engine.health import WHEELS, pit_call, tyre_health
 from sidewall.features import make_features, resample
 from sidewall.models.flatspot import FlatSpotRisk
 from sidewall.models.labels import COLD_CORE_C, HOT_SURFACE_C, LOCK_KAPPA, SPIN_KAPPA
+from sidewall.models.grip import Envelope, budget as grip_budget
 from sidewall.models.risk import RiskModel, advice
 from sidewall.twin.gas import ATM_PSI, LeakDetector, hot_pressure
 
@@ -150,6 +151,26 @@ LAP_KEYS = ("lap", "tyre_life", "compound", "lap_time_s", "safe_laps", "median_l
             "p_cliff_3", "failure_hazard", "cliff_hazard", "cliff_alert", "failure_alert")
 
 
+def _life_used(lap: dict | None) -> float | None:
+    """Share of the tyre's expected life already used. Expected life blends the circuit's typical tyre age at
+    the performance cliff (for this compound) with the model's current estimate (age + median laps to the cliff)."""
+    if not lap:
+        return None
+    age = _clean(lap.get("tyre_life"))
+    if age is None:
+        return None
+    guesses = []
+    prior = _clean(lap.get("circuit_cliff_life_prior"))
+    if prior:
+        guesses.append(prior)
+    med = _clean(lap.get("median_laps"))
+    if med is not None:
+        guesses.append(age + med)
+    if not guesses:
+        return None
+    return float(age / max(np.mean(guesses), 1.0))
+
+
 def _clean(v):
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return None
@@ -174,6 +195,9 @@ class Fuser:
         self.prev_t = None
         self.risk_avg = {"lockup": 0.0, "wheelspin": 0.0}
         self.group_avg = {"lockup": {}, "wheelspin": {}}
+        self.health_smooth = {w: None for w in WHEELS}
+        self.heat_avg = {}
+        self.envelope = Envelope()
 
     def _explain(self, r, ev: str, dt: float, wheels: dict) -> dict:
         """Calibrated risk for the next second, why (factor shares), and what to do about it."""
@@ -199,18 +223,64 @@ class Fuser:
         else:
             w_hint = None
         ws = w_hint or axle[0]
+        # Heat history: how hot this axle has run over the last minute.
+        ax_surf = float(np.mean(list(surf.values())))
+        h = self.heat_avg.get(ev)
+        self.heat_avg[ev] = ax_surf if h is None else h + (1 - np.exp(-dt / 60.0)) * (ax_surf - h)
+        # Grip budget for the axle that fails first (fronts lock, rears spin).
+        psi_ax = float(np.mean([wheels[w]["psi"] for w in axle]))
+        tgt_ax = float(np.mean([wheels[w]["psi_target"] for w in axle]))
+        # With tyre sensors the tyre model is exact; otherwise judge against the car's own demonstrated envelope.
+        env = None if bool(getattr(r, "sensors", False)) else self.envelope.at(float(r.speed))
+        # Lock-ups come from braking + cornering load, wheelspin from traction + cornering load.
+        ax_part = min(float(r.ax), 0.0) if ev == "lockup" else max(float(r.ax), 0.0)
+        gb = grip_budget(float(r.speed), ax_part, float(r.ay), ax_surf, psi_ax, tgt_ax, envelope_g=env)
+        gb["basis"] = "physics" if env is None else "envelope"
         return {"p": round(p, 3), "p_avg": round(self.risk_avg[ev], 3), "factors": shares,
-                "top": top, "wheel": w_hint,
-                "advice": advice(ev, top, surf[ws] if w_hint else float(np.mean(list(surf.values()))),
+                "evidence": self._evidence(r, ev, shares, wheels, axle),
+                "grip": gb, "top": top, "wheel": w_hint,
+                "advice": advice(ev, top, surf[ws] if w_hint else ax_surf,
                                  wheels[ws]["psi"], wheels[ws]["psi_target"], w_hint) if top else ""}
+
+    def _evidence(self, r, ev: str, shares: dict, wheels: dict, axle) -> dict:
+        """One concrete, measured sentence per contributing factor: what the car is actually doing."""
+        names = {"fl": "front-left", "fr": "front-right", "rl": "rear-left", "rr": "rear-right"}
+        speed, ax, ay = float(r.speed), float(r.ax), float(r.ay)
+        out = {}
+        for f in shares:
+            if f == "Braking":
+                out[f] = (f"braking at {max(-ax, 0):.1f} g from {speed:.0f} km/h" if r.brake
+                          else f"about to brake: lifting off at {speed:.0f} km/h")
+            elif f == "Throttle":
+                out[f] = (f"{100 * float(r.throttle):.0f}% throttle in gear {int(r.gear)} at {speed:.0f} km/h"
+                          + (f", accelerating at {max(ax, 0):.1f} g" if ax > 0.1 else ""))
+            elif f == "Speed & cornering":
+                out[f] = f"still cornering at {abs(ay):.1f} g ({speed:.0f} km/h): grip is shared with the turn"
+            elif f == "Engine & gearing":
+                out[f] = f"gear {int(r.gear)}: engine torque/braking on the driven wheels"
+            elif f == "Tyre heat history":
+                out[f] = f"{'fronts' if ev == 'lockup' else 'rears'} averaged {self.heat_avg.get(ev, 0):.0f}°C over the last minute"
+            elif f == "Tyre temperature":
+                w = min(axle, key=lambda x: abs(wheels[x]["surface"] - 100) * -1)
+                t = wheels[w]["surface"]
+                side = "below" if t < 85 else "above" if t > 115 else "inside"
+                out[f] = f"{names[w]} tread at {t:.0f}°C, {side} the 85-115°C window"
+            elif f == "Tyre pressure":
+                w = max(axle, key=lambda x: abs(wheels[x]["psi"] - wheels[x]["psi_target"]))
+                d = wheels[w]["psi"] - wheels[w]["psi_target"]
+                out[f] = f"{names[w]} at {wheels[w]['psi']:.1f} psi, {abs(d):.1f} psi {'under' if d < 0 else 'over'} its target"
+        return out
 
     def step(self, r, lap: dict | None = None, psi_target: dict | None = None) -> dict:
         dt = 0.25 if self.prev_t is None else max(1e-3, r.t - self.prev_t)
         self.prev_t = r.t
         fs = self.flat.update(dt, getattr(r, "pdet_lockup", r.p_lockup), r.speed, r.ay, detected=bool(r.lockup))
+        self.envelope.update(dt, float(r.speed), float(np.hypot(r.ax, r.ay)))
         decay = np.exp(-dt / 30.0)
         tyres, flags = {}, {"slow_puncture": {}, "deflation": {}, "flat_spot": {}}
         wheel_out = {}
+        life_used = _life_used(lap)
+        cores = [float(getattr(r, f"core_{w}")) for w in WHEELS]
         for w in WHEELS:
             core, surf, psi = getattr(r, f"core_{w}"), getattr(r, f"surf_{w}"), getattr(r, f"psi_{w}")
             t_gas = getattr(r, f"tgas_{w}", core)
@@ -225,6 +295,10 @@ class Fuser:
                 "pressure": float(np.clip(lk["cusum"] / self.leak[w].limit, 0, 1)),
                 "abuse": float(np.clip(self.abuse[w] * 4, 0, 1)),
             }
+            if life_used is not None:
+                # The tyre working hardest (hotter carcass than the car's average) uses its life faster.
+                share = 1.0 + 0.02 * (float(core) - float(np.mean(cores)))
+                comps["wear"] = float(np.clip(life_used * share, 0, 1.2) ** 2 / 1.44 * 1.0)
             if lap is not None:
                 # Scale lap risks so that the 'box' threshold (top 1 % of training laps) maps to 0.8.
                 for comp, key in (("cliff", "p_cliff_3"), ("failure", "failure_hazard")):
@@ -232,6 +306,12 @@ class Fuser:
                     if val is not None:
                         comps[comp] = float(np.clip(0.8 * val / box, 0, 1)) if box else float(np.clip(val, 0, 1))
             tyres[w] = tyre_health(comps)
+            # Smooth the index: it may fall quickly (2 s) but only recovers slowly (20 s), so it doesn't flicker.
+            prev = self.health_smooth[w]
+            if prev is not None:
+                tau = 2.0 if tyres[w].health < prev else 20.0
+                tyres[w].health = round(prev + (tyres[w].health - prev) * (1 - np.exp(-dt / tau)), 1)
+            self.health_smooth[w] = tyres[w].health
             flat_now = bool(fs[w]["flat_spot"] or vib_flat)
             sp, dfl = bool(lk["slow_puncture"]), bool(lk["deflation"])
             flags["slow_puncture"][w] = sp

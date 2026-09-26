@@ -65,3 +65,16 @@ def test_flat_spot_needs_confident_repeated_lockups_on_inside_front():
         fs.update(0.25, 0.99, 250.0, ay_g=2.0, detected=True)
         out = fs.update(0.25, 0.1, 250.0, ay_g=2.0, detected=False)
     assert out["fl"]["flat_spot"] and out["fl"]["slide_m"] > out["fr"]["slide_m"]
+
+
+def test_tyre_life_split_is_disjoint_and_in_time_order():
+    import pandas as pd
+    import pytest
+    from sidewall.models import tyre_life as T
+    races = pd.DataFrame({"year": [2021, 2024, 2024, 2025], "round": [3, 5, 15, 2],
+                          "driver": ["A"] * 4, "stint": [1] * 4})
+    assert T.split_of(races).tolist() == ["train", "train", "calib", "test"]
+    T.assert_no_overlap(races)
+    future = pd.concat([races, pd.DataFrame({"year": [2026], "round": [1], "driver": ["A"], "stint": [1]})])
+    with pytest.raises(ValueError, match="overlap"):    # a season after the test season would land in training
+        T.assert_no_overlap(future.reset_index(drop=True))

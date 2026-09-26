@@ -17,6 +17,7 @@ WEIGHTS = {
     "cold": 0.5,
     "pressure": 1.0,     # gas-mass loss (slow puncture)
     "abuse": 0.4,        # recent lock-up / wheelspin rate
+    "wear": 0.8,         # share of this tyre's expected life already used (squared: gentle early, steep late)
 }
 
 CALLS = ["OK", "ADVISE", "BOX THIS LAP", "BOX NOW"]
