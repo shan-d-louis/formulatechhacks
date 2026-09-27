@@ -43,6 +43,23 @@ def test_health_and_model_status():
         assert status["feedback_overlay"]["weights_mutated_by_feedback"] is False
 
 
+def test_metric_plots_exposes_chart_ready_series():
+    with TestClient(server_app.app) as client:
+        response = client.get("/api/metric-plots")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {"tierA", "tierB", "cliffCalibration", "riskReliability", "virtualTpms"} <= set(body)
+    assert body["tierA"]["points"]
+    assert {"event", "split", "roc_auc", "pr_auc"} <= set(body["tierA"]["points"][0])
+    assert body["tierB"]["points"]
+    assert {"model", "label", "value"} <= set(body["tierB"]["points"][0])
+    assert body["virtualTpms"]["points"]
+    assert {"target", "wheel", "mae_c", "baseline_mae_c"} <= set(
+        body["virtualTpms"]["points"][0]
+    )
+
+
 def test_predict_laps_is_typed_estimated_and_monotonic():
     with TestClient(server_app.app) as client:
         fresh = client.post(
