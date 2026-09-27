@@ -29,25 +29,21 @@ class Scenario:
     to_lap: int
     what_happened: str
     failure_lap: int | None = None   # lap of the real tyre failure, marked on the timeline
-    # What-if only: inject a TPMS leak {wheel: (seconds after window start, gas fraction lost per minute)}.
-    # Public F1 data has no pressure channel, so real replays never contain a leak unless one is injected.
-    leaks: dict | None = None
+    failure_text: str = ""           # what the pit wall shows when playback reaches the failure
 
 
 SCENARIOS = {
     "silverstone2020": Scenario(
         "silverstone2020", "British GP 2020: Hamilton's front-left", 2020, 4, "HAM", 20, 52,
         "Front-left tyre failed on the final lap after a ~40-lap stint on hards; won on three wheels.",
-        failure_lap=52),
+        failure_lap=52,
+        failure_text="Front-left tyre failure on the last lap: Hamilton limped the rest of the lap on three wheels "
+                     "and still won."),
     "baku2021": Scenario(
         "baku2021", "Azerbaijan GP 2021: Verstappen's left-rear", 2021, 6, "VER", 14, 46,
         "Left-rear failed at ~300 km/h on lap 46 while leading; Pirelli blamed low running pressures.",
-        failure_lap=46),
-    "silverstone2020_whatif": Scenario(
-        "silverstone2020_whatif", "What-if: slow puncture injected (Silverstone 2020)", 2020, 4, "HAM", 20, 40,
-        "Synthetic: a 0.8 %/min leak is injected on the front-left TPMS channel at lap ~24 to show the "
-        "temperature-independent leak detector. Not real data.",
-        leaks={"fl": (400.0, 0.008)}),
+        failure_lap=46,
+        failure_text="Left-rear tyre failure at over 300 km/h: Verstappen crashed out of the lead."),
 }
 
 
@@ -85,9 +81,8 @@ def build_replay(sc: Scenario, bundles: dict) -> dict:
     S = S.rename(columns={"lap_start_s": "lap_start_t", "lap_end_s": "lap_end_t"})
     S = S[(S["lap"] >= sc.from_lap) & (S["lap"] <= sc.to_lap)].sort_values("lap")
 
-    leaks = {w: (t0 + start, rate) for w, (start, rate) in sc.leaks.items()} if sc.leaks else None
     mon = TyreMonitor(bundles)
-    frames = mon.frame_outputs(stream, leaks=leaks)
+    frames = mon.frame_outputs(stream)
     frames = frames[frames["t"] >= t0].reset_index(drop=True)
     fused = mon.fuse(frames, S)
     track = _track_outline(tel)
@@ -117,10 +112,36 @@ def _track_outline(tel: pd.DataFrame, n: int = 600) -> list[list[float]]:
 def get_replay(key: str, bundles: dict, rebuild: bool = False) -> dict:
     path = REPLAY_CACHE / f"{key}.json"
     if path.exists() and not rebuild:
-        return json.loads(path.read_text())
-    data = _sanitize(build_replay(SCENARIOS[key], bundles))
-    path.write_text(json.dumps(data, default=_json_default, allow_nan=False))
+        data = json.loads(path.read_text())
+    else:
+        data = _sanitize(build_replay(SCENARIOS[key], bundles))
+        path.write_text(json.dumps(data, default=_json_default, allow_nan=False))
+    data["failure"] = failure_event(data["frames"], SCENARIOS[key])
     return data
+
+
+def failure_event(frames: list[dict], sc: Scenario) -> dict | None:
+    """Find the real tyre failure in the telemetry: on the failure lap, the first point where the car is at least
+    30 % slower than on the lap before at the same place, for 3 s. If it then stops within 10 s, it crashed;
+    otherwise it carried on (limped). Returns where and when, so the pit wall can show it at that moment."""
+    if not sc.failure_lap or not frames:
+        return None
+    t = np.array([f["t"] for f in frames]); v = np.array([f["speed"] for f in frames])
+    x = np.array([f["x"] for f in frames]); y = np.array([f["y"] for f in frames])
+    lap = np.array([((f.get("lap") or {}).get("lap") or np.nan) for f in frames], float)
+    prev, cur = np.flatnonzero(lap == sc.failure_lap - 1), np.flatnonzero(lap == sc.failure_lap)
+    if not len(prev) or not len(cur):
+        return None
+    ref = np.array([v[prev[np.argmin((x[prev] - x[i]) ** 2 + (y[prev] - y[i]) ** 2)]] for i in cur])
+    slow = (v[cur] < 0.7 * ref) & (ref > 120)
+    k = next((a for a in range(len(cur) - 12) if slow[a:a + 12].all()), None)
+    if k is None:
+        return None
+    i = cur[k]
+    stop = next((a for a in range(i, len(frames)) if v[a] < 5 and t[a] - t[i] <= 10), None)
+    at = stop if stop is not None else i
+    return {"kind": "crash" if stop is not None else "failure", "t": float(t[at]), "x": float(x[at]), "y": float(y[at]),
+            "speed_before_kmh": round(float(ref[k])), "lap": sc.failure_lap, "text": sc.failure_text}
 
 
 def _sanitize(o):

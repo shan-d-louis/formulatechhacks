@@ -159,14 +159,17 @@ function connect() {
   ws.onclose = () => { $("claim").disabled = true; $("claim").textContent = "Reconnecting…"; setTimeout(connect, 1000); };
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
+    if (m.type === "crash") { navigator.vibrate?.([400, 100, 400]); return; }
     if (m.type === "scenario_result" || m.type === "scenario_error") { showScenarioNote(m.text, m.type === "scenario_result"); return; }
     if (m.type !== "state") return;
     renderScenario(m.scenario);
     $("spd").textContent = Math.round(m.speed); $("gear").textContent = `gear ${m.gear}`;
     gauge.target = m.speed; gauge.gear = `GEAR ${m.gear}`; gauge.srvThr = m.throttle || 0; gauge.srvBrk = m.brake || 0;
     $("lap").textContent = m.lap; $("lapt").textContent = m.lap_time.toFixed(1);
-    $("call").textContent = m.call === "OK" ? "OK" : m.call; $("call").style.color = LEVEL_COLOR[m.level || 0];
-    if (m.advice) $("adv").textContent = m.advice;
+    $("call").textContent = m.crash ? "CRASHED" : m.call === "OK" ? "OK" : m.call;
+    $("call").style.color = m.crash ? "#ff2a4b" : LEVEL_COLOR[m.level || 0];
+    if (m.crash) $("adv").textContent = `${m.crash.text}. Recovering to the pits…`;
+    if (m.advice && !m.crash) $("adv").textContent = m.advice;
     $("box").classList.toggle("call", (m.level || 0) >= 2);        // BOX THIS LAP / BOX NOW
     if (m.mode !== "driver" && driving) { driving = false; showGate("The autopilot took over. Tap to drive again."); }
     const lock = m.truth && m.truth.lockup, spin = m.truth && m.truth.wheelspin;

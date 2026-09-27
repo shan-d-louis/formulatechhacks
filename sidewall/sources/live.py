@@ -27,6 +27,7 @@ STATE_EVERY = 2            # publish car state every 2 physics steps (10 Hz)
 ANALYSE_EVERY_S = 0.5
 DRIVER_TIMEOUT_S = 2.0
 MAX_SESSION_S = 30 * 60    # keep the buffer bounded: reset the stint after 30 minutes
+CRASH_HOLD_S = 8.0         # a crashed car stands still this long, then is recovered to the pits on fresh tyres
 
 
 class LiveSession:
@@ -134,6 +135,11 @@ class LiveSession:
 
     async def _step_physics(self) -> dict:
         """One physics tick: a running scenario sets the pedals first, then the car moves."""
+        crash = self.sim.crashed
+        if crash and self.sim.t - crash["t"] >= CRASH_HOLD_S:
+            self.pit_stop()                      # recovered: back out of the pits on fresh tyres
+            for ch in ("pitwall", "driver"):
+                await self.publish(ch, {"type": "recovered", "text": "Car recovered to the pits: fresh tyres, new stint."})
         if self.scenario:
             self.scenario.tick(1.0 / SIM_HZ)
             for text in self.scenario.events:
@@ -145,9 +151,18 @@ class LiveSession:
                     self.watch.end_t = self.sim.t
                 self._end_scenario()
                 await self.publish("pitwall", {"type": "notice", "text": f"{label} scenario finished."})
+        was_crashed = self.sim.crashed is not None
         r = self.sim.step(1.0 / SIM_HZ)
         self.measured.append(r.pop("measured"))
         self.truth = r.pop("truth")
+        if self.sim.crashed and not was_crashed:
+            if self.scenario:
+                if self.watch:
+                    self.watch.end_t = self.sim.t
+                self._end_scenario()             # the script can't drive a wrecked car; its watcher reports as usual
+            msg = {"type": "crash", **self.sim.crashed, "recover_s": CRASH_HOLD_S}
+            for ch in ("pitwall", "driver"):
+                await self.publish(ch, msg)
         if self.watch:
             self.watch.on_physics(self.sim.t, self.truth, self.sim)
         self.rows.append(r)
@@ -171,6 +186,7 @@ class LiveSession:
             "brake": round(float(s.inputs["brake"] if not s.autopilot else r["brake"]), 2),
             "mode": "driver" if self.driver_active else "autopilot",
             "scenario": self.scenario.status() if self.scenario else None,
+            "crash": s.crashed,
             "lap": s.lap, "lap_time": round(s.t - s.lap_start_t, 2),
             "last_lap": round(s.lap_times[-1], 2) if s.lap_times else None,
             "best_lap": round(min(s.lap_times), 2) if s.lap_times else None,
@@ -208,7 +224,7 @@ class LiveSession:
             return
         stream = pd.DataFrame(self.rows[:n])
         measured = pd.DataFrame(self.measured[:n])
-        frames = await asyncio.to_thread(self.monitor.frame_outputs, stream, None, measured, self.last_frame_t)
+        frames = await asyncio.to_thread(self.monitor.frame_outputs, stream, measured, self.last_frame_t)
         if gen != self.generation:                 # tyres changed while we were analysing the old set
             return
         if frames is None or frames.empty:

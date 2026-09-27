@@ -126,6 +126,9 @@ class TyreSim:
         # Set by a scripted scenario: the car drives a virtual straight / corner of this curvature (1/m, > 0 left)
         # instead of the circuit's, so the script's own braking zones and corners decide what the tyres feel.
         self.script_kappa: float | None = None
+        # Set when the car crashes: {"kind": "off" | "tyre_failure", "wheel": w | None, "t", "x", "y", "text"}.
+        # A crashed car stands still (tyres keep cooling) until the session recovers it.
+        self.crashed: dict | None = None
 
     # ---------------------------------------------------------------- helpers
     def _at(self, arr):
@@ -195,6 +198,8 @@ class TyreSim:
     # ---------------------------------------------------------------- physics step
     def step(self, dt: float = 0.05) -> dict:
         thr, brk = (self._autopilot() if self.autopilot else (self.inputs["throttle"], self.inputs["brake"]))
+        if self.crashed:
+            thr, brk = 0.0, 0.0
         v = max(self.v, 1.0)
         kappa = self._kappa()
         v_ref = self._at(self.p["v_ref"])
@@ -252,8 +257,11 @@ class TyreSim:
                 a_long = drive
                 self._spin = 0.0
         drag = 0.0014 * v * v
-        self.v = max(3.0, self.v + (a_long - drag) * dt)
-        self.s += self.v * dt
+        if self.crashed:
+            self.v = 0.0
+        else:
+            self.v = max(3.0, self.v + (a_long - drag) * dt)
+            self.s += self.v * dt
         self.t += dt
 
         # Lap counter.
@@ -324,8 +332,11 @@ class TyreSim:
         if truth["wheelspin"]:
             for w in ("rl", "rr"):
                 kappa[w] = min(1.0, 0.18 + getattr(self, "_spin", 0.0))
-        self.truth = truth
         x, y = self._at(self.p["x"]), self._at(self.p["y"])
+        if not self.crashed:
+            self._check_crash(truth, x, y)
+        truth["crash"] = bool(self.crashed)
+        self.truth = truth
         return {
             "t": self.t, "speed_kmh": kmh, "throttle": thr, "brake": float(brk > 0.1), "gear": self.gear,
             "rpm": rpm, "x": x, "y": y, "tyre_age_s": self.t + self.tyre_life * self.p["lap_ref_s"],
@@ -340,6 +351,23 @@ class TyreSim:
                       **{f"wear_{w}": round(self.wear[w], 3) for w in WHEELS},
                       **{f"flat_{w}": round(self.flat_depth[w], 1) for w in WHEELS}},
         }
+
+    FAILURE_GAS_LEFT = 0.6       # a tyre that has lost 40 % of its air gives way at speed
+    FAILURE_MIN_KMH = 80.0
+
+    def _check_crash(self, truth: dict, x: float, y: float):
+        """Too fast for the corner (beyond the slide limit) puts the car off; a badly deflated tyre fails."""
+        crash = None
+        if truth["off"]:
+            crash = {"kind": "off", "wheel": None, "text": "Off the track: too fast for the corner"}
+        else:
+            flat = [w for w in WHEELS if self.gas_mass[w] < self.FAILURE_GAS_LEFT]
+            if flat and self.v * 3.6 > self.FAILURE_MIN_KMH:
+                w = min(flat, key=lambda k: self.gas_mass[k])
+                crash = {"kind": "tyre_failure", "wheel": w, "text": f"{w.upper()} tyre failure: it lost too much air"}
+        if crash:
+            self.crashed = {**crash, "t": round(self.t, 2), "x": round(x, 1), "y": round(y, 1)}
+            self.v = 0.0
 
     def laps_table(self) -> pd.DataFrame:
         """Completed laps in the stint-table format the Tier B models expect."""

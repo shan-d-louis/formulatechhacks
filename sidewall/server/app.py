@@ -11,6 +11,7 @@ Pages
 import asyncio
 import io
 import json
+import os
 import socket
 import sys
 import time
@@ -18,14 +19,14 @@ from typing import Any, Literal
 
 import qrcode
 import uvicorn
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from sidewall import config
 from sidewall.engine.monitor import load_bundles
-from sidewall.server import feedback
+from sidewall.server import feedback, tunnel
 from sidewall.server.jobs import JOBS, JobRecord
 from sidewall.server.utils import short_git_hash
 from sidewall.sources import replay
@@ -308,18 +309,34 @@ def atlas_data():
     return JSONResponse(json.loads(p.read_text()) if p.exists() else {})
 
 
+def phone_base(request: Request) -> str:
+    """The address a phone should open: the Cloudflare tunnel when one is running, else the address this page was
+    opened on (if not localhost, phones can reach it too), else this laptop's local-network address."""
+    public = os.environ.get("SIDEWALL_PUBLIC_URL") or tunnel.public_url()
+    if public:
+        return public.rstrip("/")
+    host = request.headers.get("host", "")
+    if host and not host.split(":")[0] in ("localhost", "127.0.0.1", "[::1]"):
+        scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+        return f"{scheme}://{host}"
+    return f"http://{lan_ip()}:{PORT}"
+
+
 @app.get("/api/qr")
-def qr(path: str = "/crew"):
-    url = f"http://{lan_ip()}:{PORT}{path}"
+def qr(request: Request, path: str = "/crew"):
+    url = f"{phone_base(request)}{path}"
     img = qrcode.make(url)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    return Response(buf.getvalue(), media_type="image/png", headers={"X-URL": url})
+    # Never cached: the laptop's address changes when it reconnects (e.g. a phone hotspot), and a stale QR code
+    # would send phones to an address that no longer exists.
+    return Response(buf.getvalue(), media_type="image/png",
+                    headers={"X-URL": url, "Cache-Control": "no-store", "Access-Control-Expose-Headers": "X-URL"})
 
 
 @app.get("/api/lan")
-def lan():
-    return {"base": f"http://{lan_ip()}:{PORT}"}
+def lan(request: Request):
+    return {"base": phone_base(request), "tunnel": tunnel.public_url() is not None}
 
 
 # ------------------------------------------------------------------ websockets
@@ -466,5 +483,8 @@ async def live_debris():
 PORT = 8000
 
 if __name__ == "__main__":
+    # --tunnel (or SIDEWALL_TUNNEL=1): a public https address via Cloudflare, so phones work on any network.
+    if "--tunnel" in sys.argv or os.environ.get("SIDEWALL_TUNNEL") == "1":
+        tunnel.start(PORT)
     print(f"Lightning Response on http://localhost:{PORT}  (phones: http://{lan_ip()}:{PORT})")
     uvicorn.run(app, host="0.0.0.0", port=PORT)

@@ -317,11 +317,6 @@ SCENARIOS = {
         "baku2021", "Azerbaijan GP 2021: Verstappen's left-rear", 2021, 6, "VER", 14, 46,
         "Left-rear failed at ~300 km/h on lap 46 while leading; Pirelli blamed low running pressures.",
         failure_lap=46),
-    "silverstone2020_whatif": Scenario(
-        "silverstone2020_whatif", "What-if: slow puncture injected (Silverstone 2020)", 2020, 4, "HAM", 20, 40,
-        "Synthetic: a 0.8 %/min leak is injected on the front-left TPMS channel at lap ~24 to show the "
-        "temperature-independent leak detector. Not real data.",
-        leaks={"fl": (400.0, 0.008)}),
 }
 ```
 If not installed, run the following scripts from the root of this repository: 
@@ -339,13 +334,26 @@ Tests:
 uv run pytest -q
 ```
 
+## Phones on any network (Cloudflare tunnel)
+Phones normally reach the laptop over the local Wi-Fi, which fails on networks that block device-to-device traffic
+(eduroam, most venue Wi-Fi) and breaks whenever the laptop reconnects. A Cloudflare quick tunnel gives the server a
+public `https://…trycloudflare.com` address instead, and the QR codes use it automatically:
+
+```bash
+winget install --id Cloudflare.cloudflared      # once
+python -m sidewall.server.app --tunnel          # or set SIDEWALL_TUNNEL=1
+```
+
+The address appears in the console after a few seconds and changes on every start; the pit wall's QR code picks it up
+by itself. Without the tunnel, everything falls back to the local network.
+
 ## Demo (about 4 minutes)
 1. **Ghost of Silverstone 2020.** Replay Hamilton's stint at 20× with the Radio switch on and a judge's phone on the Crew QR code. The model has **never seen 2020**. The call reaches ADVISE on lap 36, BOX on lap 40 and sustained BOX from lap 44, eight laps before the real front-left failure on lap 52; failure risk hits the top 1% on lap 49, when Bottas and Sainz failed. Everything on screen uses only data available up to that moment.
 2. **"Drive it yourself."** Pick *LIVE*; a judge scans the Driver QR code and uses the phone pedals. Braking late gives a lock-up (the phone buzzes) and then a flat spot. Flooring it out of slow corners gives wheelspin. **💥 Debris** starts a slow puncture, and the air-loss detector catches it while the raw pressure still looks normal. The crew phone flashes BOX.
 3. **Atlas.** Circuits ranked by data-driven stint cap, survival curves, degradation per season, failures by tyre age and the model scorecard.
 
 ## Honest limitations
-- Public F1 data has **no tyre pressure, temperature or wheel speed**. Temperatures and pressures in replays are *estimates* from the virtual TPMS, calibrated on an F3-class sim. Leaks appear in replays only in the clearly labelled what-if scenario.
+- Public F1 data has **no tyre pressure, temperature or wheel speed**. Temperatures and pressures in replays are *estimates* from the virtual TPMS, calibrated on an F3-class sim. Replays never show a leak: that detector is demonstrated in the live simulator (Debris, or the Tyre Pressure Anomaly scenario).
 - The ML lock-up detector learned the Dallara's lock-up signature. In the live sim the car also has wheel-speed sensors (as real race cars do), and the dashboard shows which source fired: `wheel-speed`, `AI` or `sensor+AI`.
 - There are few tyre failures in public data, so the failure hazard is weak. Alerts use percentile thresholds (top 5% / top 1% of training laps) rather than being tuned to the demo races.
 

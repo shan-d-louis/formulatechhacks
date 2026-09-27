@@ -20,9 +20,7 @@
   <div class="right">
     <select id="scenario" class="btn small" title="Which real race to replay"></select>
     <span class="conn" title="Phones connected as the driver"><span class="dot" id="dotDriver"></span>Driver</span>
-    <span class="conn" title="Phones connected as the pit crew"><span class="dot" id="dotCrew"></span>Crew</span>
     <button id="tts" class="btn small" title="Read the radio calls out loud">🔈 Radio off</button>
-    <button id="qrCrew" class="btn small" title="Show a QR code for the pit-crew phone">Crew phone</button>
   </div>
 </header>
 
@@ -67,7 +65,13 @@
         <h3><span class="help" title="Each tile is one tyre, arranged as on the car (front at the top). The big number is the tread surface temperature; the colour bar shows it against the grip window.">Tyres</span>
           <span class="right"><span class="tag" id="tyreSource">–</span></span></h3>
         <div class="car" id="car">
-          <div id="tile_fl"></div><div class="chassis"></div><div id="tile_fr"></div>
+          <div id="tile_fl"></div>
+          <div class="chassis" aria-hidden="true"><div class="car-top">
+            <img src="/static/car-topdown.png" alt="">
+            <i class="wheel" id="wheel_fl" style="left:16.2%;top:18.9%"></i><i class="wheel" id="wheel_fr" style="left:86.3%;top:18.9%"></i>
+            <i class="wheel" id="wheel_rl" style="left:16.8%;top:82.9%"></i><i class="wheel" id="wheel_rr" style="left:85.3%;top:82.9%"></i>
+          </div></div>
+          <div id="tile_fr"></div>
           <div id="tile_rl"></div><div id="tile_rr"></div>
         </div>
         <div class="muted" style="font-size:12px;margin-top:10px" id="tyreNote"></div>
@@ -86,7 +90,12 @@
     <div class="stack">
       <div class="panel">
         <h3>Track <span class="right"><span class="badge ollon" id="mapSource">FastF1 position</span></span></h3>
-        <canvas id="map" class="map"></canvas>
+        <div class="map-wrap">
+          <canvas id="map" class="map"></canvas>
+          <div class="crash-overlay" id="crashOverlay" hidden role="status">
+            <b id="crashTitle">CRASH</b><span id="crashText"></span><small id="crashSub"></small>
+          </div>
+        </div>
         <div class="legend"><span><i style="background:#ff2a4b"></i>lock-up</span><span><i style="background:#2fd27a"></i>wheelspin</span><span><i style="background:#ffc233"></i>pit call raised</span></div>
         <div class="kvs">
           <div class="kv"><div class="k">Speed</div><div class="v"><span id="speed">–</span><span class="muted" style="font-size:12px"> km/h</span></div></div>
@@ -142,7 +151,6 @@
           <li>Turn the phone sideways and tap <b>Take the wheel</b>. Left side brakes, right side accelerates. Steering is automatic.</li>
           <li>Brake too late or floor it out of a slow corner. Watch the <b>risk panel</b> predict it, explain why, and tell you how to avoid it.</li>
         </ol>
-        <p class="muted" style="margin:10px 0 0;font-size:13px">Optional: a second phone can be the pit crew (“Crew phone” at the top) and gets the box calls.</p>
       </div>
     </div>
   </section>
