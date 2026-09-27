@@ -109,37 +109,85 @@
 const $ = (id) => document.getElementById(id);
 const COLORS = ["#ff2a4b", "#ffc233", "#f8fafc", "#00e5ff", "#b07cff"];
 
-function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
+function chart(canvas, series, { xs, ymax, xlabel, hline, log } = {}) {
+  // Line series use points spread edge to edge; bar charts use one band per category, so bars never hang outside the
+  // plot. Category labels sit centred under their band, wrapped to two lines. `log: true` draws bars up or down from 1
+  // on a log scale (for odds ratios, where x0.1 matters as much as x10).
   const r = canvas.getBoundingClientRect(); const dpr = devicePixelRatio;
   canvas.width = r.width * dpr; canvas.height = r.height * dpr;
-  const c = canvas.getContext("2d"), W = canvas.width, H = canvas.height, L = 36 * dpr, B = 22 * dpr, T = 20 * dpr, R = 8 * dpr;
-  c.clearRect(0, 0, W, H);
+  const c = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
   const n = Math.max(...series.map((s) => s.values.length));
-  ymax = ymax ?? Math.max(...series.flatMap((s) => s.values.filter((v) => v != null))) * 1.1;
-  c.font = `${10 * dpr}px system-ui`; c.fillStyle = "#94a3b8"; c.strokeStyle = "#1e293b";
-  for (let g = 0; g <= 4; g++) {
-    const y = T + (H - T - B) * g / 4; c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke();
-    c.fillText((ymax * (1 - g / 4)).toFixed(ymax < 1 ? 2 : ymax < 10 ? 1 : 0), 2 * dpr, y + 3 * dpr);
+  const bars = series.some((s) => s.bars), barSeries = series.filter((s) => s.bars);
+  const fs = 10 * dpr, lineH = 12 * dpr;
+  c.font = `${fs}px system-ui`;
+  const vals = series.flatMap((s) => s.values.filter((v) => v != null));
+  let lo = 0, hi = ymax ?? Math.max(...vals) * 1.1;
+  if (log) {
+    lo = Math.min(1, ...vals) / 1.4; hi = Math.max(1, ...vals) * 1.4;
   }
-  const X = (i) => L + (W - L - R) * i / Math.max(1, n - 1), Y = (v) => T + (H - T - B) * (1 - v / ymax);
-  if (xs) for (let i = 0; i < n; i += Math.ceil(n / 8)) c.fillText(xs[i], X(i) - 6 * dpr, H - 6 * dpr);
-  if (hline != null) { c.strokeStyle = "#ff2a4b"; c.setLineDash([5, 4]); c.beginPath(); c.moveTo(L, Y(hline)); c.lineTo(W - R, Y(hline)); c.stroke(); c.setLineDash([]); }
-  const barSeries = series.filter((s) => s.bars);
+  const L = 38 * dpr, R = 8 * dpr, T = 20 * dpr;
+  const tickLines = bars && xs ? 2 : 1;
+  const B = (tickLines * lineH) + (xlabel ? lineH + 6 * dpr : 4 * dpr) + 4 * dpr;
+  const plotW = W - L - R, plotH = H - T - B;
+  c.clearRect(0, 0, W, H);
+  const Y = log ? (v) => T + plotH * (1 - (Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)))
+                : (v) => T + plotH * (1 - (v - lo) / (hi - lo));
+  const band = plotW / Math.max(1, n);
+  const X = bars ? (i) => L + band * (i + 0.5) : (i) => L + plotW * i / Math.max(1, n - 1);
+  // grid + y labels
+  c.fillStyle = "#94a3b8"; c.strokeStyle = "#1e293b"; c.lineWidth = 1; c.textAlign = "left";
+  const ticks = log ? [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50].filter((t) => t >= lo && t <= hi)
+                    : [0, 1, 2, 3, 4].map((g) => lo + (hi - lo) * g / 4);
+  for (const t of ticks) {
+    const y = Y(t); c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke();
+    const txt = log ? `×${t}` : t.toFixed(hi < 1 ? 2 : hi < 10 ? 1 : 0);
+    c.fillText(txt, 2 * dpr, y + 3 * dpr);
+  }
+  if (hline != null) { c.strokeStyle = "#ff2a4b"; c.setLineDash([5 * dpr, 4 * dpr]); c.beginPath(); c.moveTo(L, Y(hline)); c.lineTo(W - R, Y(hline)); c.stroke(); c.setLineDash([]); }
+  // series
+  const base = log ? 1 : lo;
   series.forEach((s, k) => {
     c.strokeStyle = s.color || COLORS[k]; c.fillStyle = s.color || COLORS[k]; c.lineWidth = 2 * dpr;
     if (s.bars) {
-      const group = (W - L - R) / Math.max(1, n) * .78;
-      const bw = group / Math.max(1, barSeries.length);
-      const b = barSeries.indexOf(s);
-      s.values.forEach((v, i) => { if (v != null) c.fillRect(X(i) - group / 2 + b * bw, Y(v), bw * .9, Y(0) - Y(v)); });
+      const group = band * 0.72, bw = group / Math.max(1, barSeries.length), b = barSeries.indexOf(s);
+      s.values.forEach((v, i) => {
+        if (v == null) return;
+        const y0 = Y(base), y1 = Y(v), x = X(i) - group / 2 + b * bw;
+        c.fillRect(x, Math.min(y0, y1), bw * 0.9, Math.max(1 * dpr, Math.abs(y0 - y1)));
+      });
     } else {
       c.beginPath(); let st = false;
       s.values.forEach((v, i) => { if (v == null) { st = false; return; } st ? c.lineTo(X(i), Y(v)) : c.moveTo(X(i), Y(v)); st = true; });
       c.stroke();
     }
   });
+  // x labels
+  c.fillStyle = "#94a3b8"; c.textAlign = "center";
+  const fit = (text, width) => {                       // up to two lines, ellipsis if still too long
+    const words = String(text).split(" "); const lines = [""];
+    for (const w of words) {
+      const tryLine = lines.at(-1) ? `${lines.at(-1)} ${w}` : w;
+      if (c.measureText(tryLine).width <= width || !lines.at(-1)) lines[lines.length - 1] = tryLine;
+      else if (lines.length < tickLines) lines.push(w);
+      else { lines[lines.length - 1] += "…"; break; }
+    }
+    return lines.map((ln) => { while (c.measureText(ln).width > width && ln.length > 2) ln = ln.slice(0, -2) + "…"; return ln; });
+  };
+  if (xs) {
+    if (bars) {
+      for (let i = 0; i < n; i++) fit(xs[i], band * 0.96).forEach((ln, j) => c.fillText(ln, X(i), T + plotH + lineH * (j + 1)));
+    } else {
+      const every = Math.ceil(n / 8);
+      for (let i = 0; i < n; i += every) {
+        const w = c.measureText(String(xs[i])).width;
+        c.fillText(xs[i], Math.min(Math.max(X(i), L + w / 2), W - R - w / 2), T + plotH + lineH);
+      }
+    }
+  }
+  if (xlabel) { c.textAlign = "center"; c.fillText(xlabel, L + plotW / 2, H - 4 * dpr); }
+  // legend
+  c.textAlign = "left";
   let lx = L; series.forEach((s, k) => { c.fillStyle = s.color || COLORS[k]; c.fillText(s.label, lx, 12 * dpr); lx += c.measureText(s.label).width + 14 * dpr; });
-  if (xlabel) { c.fillStyle = "#94a3b8"; c.fillText(xlabel, W - R - c.measureText(xlabel).width, H - 6 * dpr); }
 }
 
 (async () => {
@@ -212,17 +260,21 @@ function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
     values: shapFamilies.map((family) => shap.find((p) => p.event === event && p.family === family)?.share),
     bars: true,
     color: COLORS[i === 0 ? 0 : 3],
-  })), { xs: shapFamilies.map((name) => name.replace(" & ", " + ")), ymax: 1, xlabel: "factor family" });
+  })), { xs: shapFamilies, xlabel: "share of each model's learning, by factor family" });
   $("shapNote").textContent = "Grouped Stage-1 LightGBM gain mirrors the TreeSHAP families shown in live lock-up and wheelspin explanations.";
 
   const odds = (plots.riskFactorAnalytics.stage2Terms || [])
     .filter((p) => p.source === "sim" && p.term !== "ml_logit")
     .sort((a, b) => Math.abs(Math.log(b.odds_ratio || 1)) - Math.abs(Math.log(a.odds_ratio || 1)))
     .slice(0, 8);
+  const TERM = { hot: "hot tyres", cold: "cold tyres", psi_low: "low pressure", psi_high: "high pressure",
+    brake_speed: "braking at speed", brake_demand: "brake demand", lat_load: "cornering load",
+    throttle_demand: "throttle demand", low_gear_throttle: "low-gear throttle" };
+  const EVT = { lockup: "Lock-up", wheelspin: "Wheelspin" };
   chart($("oddsPlot"), [
-    { label: "odds ratio", values: odds.map((p) => p.odds_ratio), bars: true, color: "#ffc233" },
-  ], { xs: odds.map((p) => `${p.event} ${p.term}`), ymax: Math.max(2, ...odds.map((p) => p.odds_ratio || 0)) * 1.1, hline: 1, xlabel: "sim calibration" });
-  $("oddsNote").textContent = "Above 1 raises one-second event odds; below 1 reduces them. Sim terms are shown because that is the live demo car.";
+    { label: "odds ratio (log scale, from ×1)", values: odds.map((p) => p.odds_ratio), bars: true, color: "#ffc233" },
+  ], { xs: odds.map((p) => `${EVT[p.event] || p.event}: ${TERM[p.term] || p.term.replace(/_/g, " ")}`), log: true, hline: 1, xlabel: "simulator car, per-car calibration" });
+  $("oddsNote").textContent = "Bars above ×1 raise the odds of the event in the next second; bars below ×1 lower them. Temperatures are per 10 °C outside the grip window, pressures per psi. Shown for the simulator car used in the live demo.";
   return;
 
   const A = m.tierA ? m.tierA.events : {}, B = m.tierB || {}, T = m.twin || {};
