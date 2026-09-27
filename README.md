@@ -1,6 +1,6 @@
 # Lightning Response: AI tyre-safety pit wall
 
-**FormulaTech Hacks: Ollon Track Winner for Data-Driven Motorsport Safety**
+## FormulaTech Hacks: Ollon Track Winner for Data-Driven Motorsport Safety 🎉
 
 Lightning Response watches every tyre on a race car, predicts trouble before it happens, explains why, and tells the
 pit wall what to do: **OK, MANAGE, BOX THIS LAP or BOX NOW**.
