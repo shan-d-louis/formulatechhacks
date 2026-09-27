@@ -27,7 +27,7 @@ Lightning Response watches every tyre in real time. It detects lock-ups, wheelsp
 | Initiative | What Lightning Response shows |
 |---|---|
 | **Safety diagnosis** | Real-time per-tyre health (0–100) and an escalating pit call. Lock-up and wheelspin warnings come 0.5–1.75 s early, and the safe-laps bound is ready before the cliff arrives. Silverstone 2020 is called BOX 15 laps before the real failure. |
-| **Data-driven** | Six seasons of public F1 data (2018–2021, 2024–2025: 127 races, 4,990 stints, 138,683 laps) turned into a tyre-safety dataset, and a **data-driven stint limit for 33 circuits**: the Qatar rule, set before anything breaks. |
+| **Data-driven** | Six seasons of public F1 data (2018–2021, 2024–2025: 127 races, 4,990 stints, 138,683 laps) turned into a tyre-safety dataset, and a **data-driven stint limit for 33 circuits**, set from data before anything breaks. |
 | **Reliable AI** | Calibrated, explained early-warning models trained on simulator ground truth and run on real F1 telemetry, a virtual tyre sensor, and survival models with a conformally calibrated safe-laps bound. |
 | **End-to-end connection** | The driver's phone is the car's pedals and receives risk alerts, over any network through a Cloudflare tunnel. |
 
@@ -128,7 +128,7 @@ The car crashes and stops dead when it goes **off the track** (too fast for a co
 - **Real sensor data.** Every F1 car already carries tyre-pressure sensors, and teams have tread-temperature and wheel-speed sensors too. Plugging these in would replace our estimates with measurements.
 - **Better failure prediction.** Public data has only 60 tyre failures (15 official), so our failure model is our weakest (0.68). Team or tyre-supplier data would let us predict *which* tyre will fail, not just when a set is worn out.
 - **Fewer false alarms.** Lock-up warnings still fire about 4 times per 150 s of normal driving in our simulator; we want to calibrate them on real car data.
-- **More races and series.** We skipped 2022–23 to save download time, and Qatar's circuit isn't in our data yet. After that: F2, F3, GT and karting, where teams have fewer engineers watching the data.
+- **More races and series.** We skipped 2022–23 to save download time, and some circuits aren't in our data yet. After that: F2, F3, GT and karting, where teams have fewer engineers watching the data.
 - **A permanent deployment.** Moving from a laptop and a quick tunnel to an always-on server, so crews and drivers can use it at any track.
 
 ## Built with

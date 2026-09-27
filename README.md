@@ -33,7 +33,7 @@ Since 2022 every F1 car has carried a standard FIA tyre-pressure sensor, but the
 | Track | What Lightning Response shows |
 |---|---|
 | **Track 1: Safety Diagnosis** | Real-time per-tyre health (0–100) and an escalating pit call. Lock-up and wheelspin warnings come 0.5–1.75 s early, and the safe-laps bound is ready before the cliff arrives. Silverstone 2020 is called BOX 15 laps before the real failure. |
-| **Ollon: data-driven** | Six seasons of public F1 data (2018–2021, 2024–2025: 127 races, 4,990 stints, 138,683 laps) turned into a tyre-safety dataset, and a **data-driven stint limit for 33 circuits**: the Qatar rule, set before anything breaks. |
+| **Ollon: data-driven** | Six seasons of public F1 data (2018–2021, 2024–2025: 127 races, 4,990 stints, 138,683 laps) turned into a tyre-safety dataset, and a **data-driven stint limit for 33 circuits**, set from data before anything breaks. |
 | **Ampere: AI** | Calibrated, explained early-warning models trained on sim ground truth and run on real F1 telemetry, a virtual tyre sensor, and survival models with a conformally calibrated safe-laps bound. |
 | **TELUS: connected (bonus)** | The driver's phone is the car's pedals, over any network through a Cloudflare tunnel. |
 
