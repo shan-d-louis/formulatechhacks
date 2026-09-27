@@ -331,7 +331,8 @@ uv run python -m sidewall.data.build_stints
 ```
 
 ### Feedback Loop
-Check [feedback.py](./sidewall/server/feedback.py).
+Check [feedback.py](./sidewall/server/feedback.py). Diagram as shown below:
+<img src="feedback-diagram.png" />
 
 Tests:
 
