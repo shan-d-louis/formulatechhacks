@@ -301,6 +301,32 @@ Those commands may download or refresh external data. The repository already inc
 demo outputs and model weights for local startup, so you do not need to run the data
 pipeline just to try the app.
 
+### Notes for troubleshooting
+
+Make sure these datasets are installed:
+```python
+SCENARIOS = {
+    "silverstone2020": Scenario(
+        "silverstone2020", "British GP 2020: Hamilton's front-left", 2020, 4, "HAM", 20, 52,
+        "Front-left tyre failed on the final lap after a ~40-lap stint on hards; won on three wheels.",
+        failure_lap=52),
+    "baku2021": Scenario(
+        "baku2021", "Azerbaijan GP 2021: Verstappen's left-rear", 2021, 6, "VER", 14, 46,
+        "Left-rear failed at ~300 km/h on lap 46 while leading; Pirelli blamed low running pressures.",
+        failure_lap=46),
+    "silverstone2020_whatif": Scenario(
+        "silverstone2020_whatif", "What-if: slow puncture injected (Silverstone 2020)", 2020, 4, "HAM", 20, 40,
+        "Synthetic: a 0.8 %/min leak is injected on the front-left TPMS channel at lap ~24 to show the "
+        "temperature-independent leak detector. Not real data.",
+        leaks={"fl": (400.0, 0.008)}),
+}
+```
+If not installed, run the following scripts from the root of this repository: 
+```bash
+uv run python -m sidewall.data.ingest_fastf1 --years 2020 2021 --telemetry
+uv run python -m sidewall.data.build_stints
+```
+
 Tests:
 
 ```bash
