@@ -33,7 +33,7 @@ EXPECTED = {  # scenario -> (critical kind, tires that must raise it)
 }
 
 
-@pytest.mark.parametrize("age", [0.0, 30.0])
+@pytest.mark.parametrize("age", [0.0, 20.0, 30.0])
 @pytest.mark.parametrize("key", list(EXPECTED))
 def test_scenario_raises_its_critical_alert(key, age):
     out = sc.run(key, quiet=True, tire_age=age)

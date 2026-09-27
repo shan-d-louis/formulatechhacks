@@ -30,6 +30,8 @@ class TireState:
     # Slip events
     lockup: SlipEvent = field(default_factory=SlipEvent)
     wheelspin: SlipEvent = field(default_factory=SlipEvent)
+    lockup_risk: SlipEvent = field(default_factory=SlipEvent)  # near lock-up: slip close to the limit
+    wheelspin_risk: SlipEvent = field(default_factory=SlipEvent)  # near wheelspin
 
     # Overheat / pressure flag states: "none" | "warning" | "critical"
     overheat: str = "none"

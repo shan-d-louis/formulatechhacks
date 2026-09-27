@@ -37,6 +37,15 @@ WHEELSPIN_CRIT_HOLD_S = 0.5  # slip above WHEELSPIN_BAD_SLIP for this long in on
 SLIP_CRIT_PIN_S = 30.0  # a critical lock-up / wheelspin stays pinned this long after it ends (the harm outlasts the slide)
 WHEELSPIN_DAMAGE_K = 0.12  # damage per frame while active: slip * speed_mps * dt * K
 
+# ---------- Near-limit warnings (approaching a lock-up / wheelspin) ----------
+LOCKUP_RISK_SLIP = -0.09  # front slip between this and LOCKUP_SLIP under braking = near lock-up
+WHEELSPIN_RISK_SLIP = 0.09  # rear slip between this and WHEELSPIN_SLIP on throttle = near wheelspin
+RISK_HOLD_S = 0.3  # must stay near the limit this long before warning
+RISK_MIN_BRAKE = 0.3  # near lock-up only counts under real braking
+RISK_MIN_THROTTLE = 0.5  # near wheelspin only counts under real throttle
+RISK_MIN_SPEED_KPH = 60.0  # near lock-up ignored below this (every stop ends near the limit)
+WHEELSPIN_RISK_MIN_SPEED_KPH = 15.0  # near wheelspin ignored below this (pulling away from a stop)
+
 # ---------- Overheating ----------
 TEMP_WINDOW_LOW_C = 90.0  # lower edge of the working temperature window
 TEMP_WINDOW_HIGH_C = 110.0  # upper edge of the working temperature window

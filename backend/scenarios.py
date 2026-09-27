@@ -10,11 +10,14 @@ the browser. Use it to check a scenario end to end without opening a browser.
 
 Scenarios match the simulator's keys: 1 lock-up, 2 wheelspin, 3 cornering, 4 slow puncture, 5 new tires;
 6 walks through the demo's tire-age controls (+5 laps, used tires, faster aging).
+Scenarios 1-4 are the scripted approaches in simulator/scenarios.json, the same file the browser runs.
 """
 
+import json
 import random
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 import config
@@ -37,11 +40,18 @@ LEAK_RATE = 0.006
 WEAR_END_LAPS = 40.0
 GRIP_LOSS_AT_END = 0.25
 AGE_STEP_LAPS = 5.0
+SLIP_AT_LIMIT = 0.12
+SLIP_CURVE = 3
 CORNERS = config.CORNERS
 
 
 def _approach(x: float, target: float, rate: float, dt: float) -> float:
     return x + (target - x) * min(1.0, rate * dt)
+
+
+def _slip_below_limit(use: float) -> float:
+    """Tires slip a little before they let go: SLIP_AT_LIMIT * utilisation^SLIP_CURVE."""
+    return SLIP_AT_LIMIT * min(1.0, max(0.0, use)) ** SLIP_CURVE
 
 
 def _noise(a: float) -> float:
@@ -80,6 +90,17 @@ class Sim:
     def grip(self) -> float:
         return 1 - GRIP_LOSS_AT_END * min(1.0, self.age_laps / WEAR_END_LAPS)
 
+    # Grip and engine, shared by the physics and the scenario autopilot (mirror of the simulator's helpers)
+    def front_grip_at(self, v: float) -> float:
+        return (34 + 0.08 * v) * self.grip()
+
+    def rear_grip_at(self, v: float) -> float:
+        return (REAR_GRIP + REAR_DOWNFORCE * v) * self.grip()
+
+    @staticmethod
+    def engine_accel_at(v: float, throttle: float) -> float:
+        return throttle * 22 * min(1, 30 / max(v, 1)) * (1 - v / TOP_SPEED)
+
     def step(self, ctl: dict, dt: float = PHYS_DT) -> None:
         self.throttle = _approach(self.throttle, ctl["throttle"], 8, dt)
         self.brake = _approach(self.brake, ctl["brake"], 10, dt)
@@ -87,14 +108,15 @@ class Sim:
         v = self.v
         grip = self.grip()
 
-        engine = self.throttle * 22 * min(1, 30 / max(v, 1)) * (1 - v / TOP_SPEED)
-        rear_grip = (REAR_GRIP + REAR_DOWNFORCE * v) * grip
+        engine = self.engine_accel_at(v, self.throttle)
+        rear_grip = self.rear_grip_at(v)
         rear_excess = max(0.0, engine - rear_grip)
-        rear_slip = rear_excess * 0.1
+        rear_slip = _slip_below_limit(engine / rear_grip) + rear_excess * 0.1
         demand = self.brake * 55
-        front_grip = (34 + 0.08 * v) * grip
+        front_grip = self.front_grip_at(v)
         front_excess = max(0.0, demand - front_grip)
-        front_slip = -min(1.0, (front_excess / front_grip) * 1.3 + (0.4 if front_excess > 0 and v < 15 else 0))
+        front_slip = -min(1.0, _slip_below_limit(demand / front_grip) + (front_excess / front_grip) * 1.3
+                          + (0.4 if front_excess > 0 and v < 15 else 0))
         decel = min(demand, front_grip * (0.85 if front_excess > 0 else 1))
         drag = 0.0004 * v * v + 0.3
         self.v = max(0.0, v + (min(engine, rear_grip + rear_excess * 0.2) - decel - drag) * dt)
@@ -110,8 +132,8 @@ class Sim:
             front, left = c[0] == "F", c[1] == "L"
             tr.slip = (front_slip if v > 0.5 else 0.0) if front else rear_slip
             outside = 1.0 if (lat_g > 0) == left else 0.3  # turning right loads the left tires
-            corner_speed = v * (1 + (1 if left else -1) * lat_g * 0.004)
-            tr.wheel = max(0.0, corner_speed * (1 + tr.slip) + (0 if front else rear_slip * 6))
+            corner_speed = self.v * (1 + (1 if left else -1) * lat_g * 0.004)  # this tick's speed, like the one reported
+            tr.wheel = max(0.0, corner_speed * (1 + tr.slip) + (0 if front else rear_excess * 0.6))
             target = (TRACK_TEMP_C + 0.25 * v * 3.6 + 12 * abs(lat_g) * outside + 60 * abs(tr.slip)
                       + (10 * self.brake * min(1, v / 50) if front else 0))
             tr.temp = _approach(tr.temp, target, 1 / TEMP_TAU, dt)
@@ -136,9 +158,11 @@ class Sim:
 @dataclass
 class Phase:
     label: str
-    seconds: float
+    seconds: float  # duration, or the safety limit when `until` is set
     controls: Callable[[Sim], dict]
     start: Callable[[Sim], None] = lambda s: None
+    until: Callable[[Sim], bool] | None = None  # ends the phase early once true
+    end: Callable[[Sim], None] = lambda s: None  # runs when the phase ends (e.g. a puncture)
 
 
 def hold_speed(kph: float, steer: float = 0.0) -> Callable[[Sim], dict]:
@@ -157,30 +181,130 @@ def _cruise_start(s: Sim) -> None:
 
 CRUISE = Phase("Cruise at 200 kph", 10, hold_speed(200), _cruise_start)
 
+
+# ---------- Scripted scenarios: simulator/scenarios.json (shared with the browser) ----------
+
+SCRIPTS_PATH = Path(__file__).resolve().parent.parent / "simulator" / "scenarios.json"
+SCRIPT_KEYS = {"1": "lockup", "2": "wheelspin", "3": "corner", "4": "puncture"}  # button number -> script
+CUES = {"braking_boards", "hairpin", "corner_right", "debris"}
+PUNCTURE_TIRES = set(CORNERS) | {"selected"}
+BRAKE_FULL_DEMAND = 55.0  # m/s^2 of braking asked for at brake = 1 (mirror of the simulator)
+_STEP_KEYS = {"label", "seconds", "until", "max_s", "throttle", "brake", "hold_speed_kph", "brake_use",
+              "throttle_use", "steer", "cue", "event"}
+_DRIVE_MODES = ({"throttle", "brake"}, {"hold_speed_kph"}, {"brake_use"}, {"throttle_use"})
+
+
+class ScenarioScriptError(ValueError):
+    """simulator/scenarios.json has a mistake; the message names the scenario and step."""
+
+
+def validate_scripts(data: dict) -> dict:
+    """Check every scenario and step; return the scripts (keys starting with '_' are notes)."""
+    if not isinstance(data, dict):
+        raise ScenarioScriptError("scenarios.json must be an object of scenarios")
+    scripts = {k: v for k, v in data.items() if not k.startswith("_")}
+    for name, sc in scripts.items():
+        where = f"scenario '{name}'"
+        if not isinstance(sc, dict) or not isinstance(sc.get("label"), str) or not isinstance(sc.get("button"), str):
+            raise ScenarioScriptError(f"{where}: needs a 'label' and 'button' text")
+        steps = sc.get("steps")
+        if not isinstance(steps, list) or not steps:
+            raise ScenarioScriptError(f"{where}: needs a non-empty 'steps' list")
+        for i, st in enumerate(steps, 1):
+            at = f"{where}, step {i}" + (f" ('{st.get('label')}')" if isinstance(st, dict) else "")
+
+            def bad(msg: str):
+                raise ScenarioScriptError(f"{at}: {msg}")
+
+            if not isinstance(st, dict) or not isinstance(st.get("label"), str):
+                bad("needs a 'label'")
+            unknown = set(st) - _STEP_KEYS
+            if unknown:
+                bad(f"unknown field(s) {sorted(unknown)}")
+            if ("seconds" in st) == ("until" in st):
+                bad("needs exactly one of 'seconds' or 'until'")
+            if "seconds" in st and not (isinstance(st["seconds"], (int, float)) and st["seconds"] > 0):
+                bad("'seconds' must be a positive number")
+            if "until" in st:
+                u = st["until"]
+                if not (isinstance(u, dict) and len(u) == 1 and next(iter(u)) in ("speed_kph_at_least", "speed_kph_at_most")
+                        and isinstance(next(iter(u.values())), (int, float))):
+                    bad("'until' must be {\"speed_kph_at_least\": N} or {\"speed_kph_at_most\": N}")
+                if not (isinstance(st.get("max_s"), (int, float)) and st["max_s"] > 0):
+                    bad("'until' needs a positive 'max_s' safety limit")
+            modes = [m for m in _DRIVE_MODES if m & set(st)]
+            if len(modes) > 1:
+                bad("use only one way of driving: throttle/brake, hold_speed_kph, brake_use or throttle_use")
+            for k in ("throttle", "brake", "brake_use", "throttle_use"):
+                if k in st and not (isinstance(st[k], (int, float)) and 0 <= st[k] <= 1.2):
+                    bad(f"'{k}' must be a number from 0 to 1")
+            if "steer" in st and not (isinstance(st["steer"], (int, float)) and -1 <= st["steer"] <= 1):
+                bad("'steer' must be from -1 to 1")
+            if "cue" in st and st["cue"] not in CUES:
+                bad(f"unknown cue '{st['cue']}' (use {sorted(CUES)})")
+            if "event" in st:
+                ev = st["event"]
+                if not (isinstance(ev, dict) and set(ev) == {"puncture"} and ev["puncture"] in PUNCTURE_TIRES):
+                    bad("'event' must be {\"puncture\": \"FL\"|\"FR\"|\"RL\"|\"RR\"|\"selected\"}")
+    return scripts
+
+
+def load_scripts(path: Path | None = None) -> dict:
+    path = path or SCRIPTS_PATH
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise ScenarioScriptError(f"cannot read {path}: {e}") from e
+    return validate_scripts(data)
+
+
+def step_controls(sim: Sim, step: dict) -> dict:
+    """Pedals for one scripted step at the car's current speed (mirror of the simulator's autopilot)."""
+    v, steer = sim.v, float(step.get("steer", 0.0))
+    if "hold_speed_kph" in step:
+        return {"throttle": 1.0 if v < step["hold_speed_kph"] / 3.6 else 0.3, "brake": 0.0, "steer": steer}
+    if "brake_use" in step:  # brake at this share of the front tires' grip limit right now
+        return {"throttle": 0.0, "brake": min(1.0, step["brake_use"] * sim.front_grip_at(v) / BRAKE_FULL_DEMAND),
+                "steer": steer}
+    if "throttle_use" in step:  # drive at this share of the rear tires' grip limit right now
+        full = sim.engine_accel_at(v, 1.0)
+        thr = 1.0 if full <= 0 else min(1.0, step["throttle_use"] * sim.rear_grip_at(v) / full)
+        return {"throttle": thr, "brake": 0.0, "steer": steer}
+    return {"throttle": float(step.get("throttle", 0.0)), "brake": float(step.get("brake", 0.0)), "steer": steer}
+
+
+def _until(step: dict) -> Callable[[Sim], bool] | None:
+    if "until" not in step:
+        return None
+    (kind, kph), = step["until"].items()
+    return (lambda s: s.v * 3.6 >= kph) if kind == "speed_kph_at_least" else (lambda s: s.v * 3.6 <= kph)
+
+
+def _event(step: dict, selected_tire: str) -> Callable[[Sim], None]:
+    ev = step.get("event")
+    if not ev:
+        return lambda s: None
+    tire = selected_tire if ev["puncture"] == "selected" else ev["puncture"]
+    return lambda s: setattr(s.tires[tire], "leak", LEAK_RATE)
+
+
+def phases_from_script(script: dict, selected_tire: str = "RR") -> list[Phase]:
+    """One Phase per scripted step."""
+    phases = []
+    for st in script["steps"]:
+        phases.append(Phase(st["label"], float(st.get("seconds", st.get("max_s"))),
+                            (lambda step: lambda s: step_controls(s, step))(st),
+                            until=_until(st), end=_event(st, selected_tire)))
+    phases[0].start = lambda s: setattr(s, "throttle", 0.0) or setattr(s, "brake", 0.0)  # pedals zeroed at start
+    return phases
+
+
+def _scripted(key: str) -> tuple[str, list[Phase]]:
+    script = load_scripts()[SCRIPT_KEYS[key]]
+    return f"{script['label']}: {script['button']}", [CRUISE] + phases_from_script(script)
+
 SCENARIOS: dict[str, tuple[str, list[Phase]]] = {
-    "1": ("Hard braking at speed -> front lock-up", [
-        CRUISE,
-        Phase("Stamp on the brakes from 290 kph", 2.5, lambda s: {"throttle": 0, "brake": 1, "steer": 0},
-              lambda s: _scenario_start(s, 290)),
-        Phase("Pull away again", 8, hold_speed(200)),
-    ]),
-    "2": ("Full-throttle launch -> rear wheelspin", [
-        CRUISE,
-        Phase("Full-throttle launch from a standstill", 2.5, lambda s: {"throttle": 1, "brake": 0, "steer": 0},
-              lambda s: _scenario_start(s, 0, at_least=False)),
-        Phase("Cruise", 8, hold_speed(200)),
-    ]),
-    "3": ("Sustained cornering at speed -> outside tires overheat", [
-        CRUISE,
-        Phase("Sustained right-hander at 230 kph", 15, hold_speed(230, steer=0.4),
-              lambda s: _scenario_start(s, 230)),
-        Phase("Straight line, tires cool", 25, hold_speed(230)),
-    ]),
-    "4": ("Slow puncture on RR -> pressure anomaly", [
-        CRUISE,
-        Phase("Puncture RR, keep driving", 20, hold_speed(200),
-              lambda s: setattr(s.tires["RR"], "leak", LEAK_RATE)),
-    ]),
+    **{k: _scripted(k) for k in SCRIPT_KEYS},  # 1-4: the scripted approaches from simulator/scenarios.json
     "5": ("Fit new tires -> state resets", [
         CRUISE,
         Phase("Lock the fronts once", 2.5, lambda s: {"throttle": 0, "brake": 1, "steer": 0},
@@ -236,10 +360,12 @@ def run(key: str, seed: int = 0, quiet: bool = False, tire_age: float = 0.0) -> 
     for ph in phases:
         ph.start(sim)
         t_phase = sim.t
-        say(f"\n-- {ph.label} ({ph.seconds:g} s, starts t={t_phase:.1f}s) --")
+        say(f"\n-- {ph.label} ({'up to ' if ph.until else ''}{ph.seconds:g} s, starts t={t_phase:.1f}s) --")
         for _ in range(round(ph.seconds / PHYS_DT)):
             sim.step(ph.controls(sim))
             n += 1
+            if ph.until and ph.until(sim):
+                break
             if n % FRAME_EVERY:
                 continue
             raw = sim.raw_frame()
@@ -258,6 +384,7 @@ def run(key: str, seed: int = 0, quiet: bool = False, tire_age: float = 0.0) -> 
                 if k not in seen:
                     say(f"  {since}  ALERT [{a['severity']}] {a['message']}")
                     seen[k] = a["message"]
+        ph.end(sim)
         st = out["stint"]
         say(f"  at t={out['timestamp']:.1f}s, {out['car']['speed_kph']:.0f} kph, stint {st['id']} {st['compound']} "
             f"{st['tire_age_laps']} laps old (aging {st['demo_speed']}x), grip {sim.grip():.0%}, "

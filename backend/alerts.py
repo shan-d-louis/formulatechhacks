@@ -22,6 +22,14 @@ _SLIP_MESSAGES = {
         "{tire} wheelspin on throttle: slip {peak:.2f}. Smooth the throttle.",
         "{tire} wheelspin: {dur:.1f} s, peak slip {peak:.2f}.",
     ),
+    "lockup_risk": (
+        "{tire} near lock-up under braking: slip {peak:.2f}, just short of locking. Brake a touch earlier.",
+        "{tire} near lock-up: {dur:.1f} s at the limit, peak slip {peak:.2f}. Brake a touch earlier.",
+    ),
+    "wheelspin_risk": (
+        "{tire} near wheelspin on exit: slip {peak:.2f}, just short of spinning. Feed the throttle in more gently.",
+        "{tire} near wheelspin: {dur:.1f} s at the limit, peak slip {peak:.2f}. Feed the throttle in more gently.",
+    ),
 }
 
 _SLIP_GROUP_MESSAGES = {
@@ -32,6 +40,14 @@ _SLIP_GROUP_MESSAGES = {
     "wheelspin": (
         "{tire} wheelspin x{n} this lap: peak slip {peak:.2f}. Smooth the throttle.",
         "{tire} wheelspin x{n} this lap: peak slip {peak:.2f}, longest {dur:.1f} s.",
+    ),
+    "lockup_risk": (
+        "{tire} near lock-up x{n} this lap: peak slip {peak:.2f}. Brake a touch earlier.",
+        "{tire} near lock-up x{n} this lap: peak slip {peak:.2f}, longest {dur:.1f} s at the limit.",
+    ),
+    "wheelspin_risk": (
+        "{tire} near wheelspin x{n} this lap: peak slip {peak:.2f}. Feed the throttle in more gently.",
+        "{tire} near wheelspin x{n} this lap: peak slip {peak:.2f}, longest {dur:.1f} s at the limit.",
     ),
 }
 _SEVERITY_RANK = {"info": 0, "warn": 1, "bad": 2, "critical": 3}
