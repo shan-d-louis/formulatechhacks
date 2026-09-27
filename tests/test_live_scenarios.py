@@ -97,7 +97,7 @@ def test_lead_counts_only_the_warning_that_runs_into_the_hazard():
     into = {9.0, 9.25, 9.5, 9.75, 10.0}            # continuous up to the hazard at 10.0
     r = watch_with(early | into, hazard_t=10.0)
     assert r["lead_s"] == 1.0 and r["approach_warnings"] == 1
-    assert r["text"].startswith("SIDEWALL warned 1.0 s before the lock-up")
+    assert r["text"].startswith("Lightning Response warned 1.0 s before the lock-up")
 
 
 def test_detection_after_the_hazard_is_reported_as_such():

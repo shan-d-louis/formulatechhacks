@@ -150,7 +150,7 @@ Tap the lit button again to stop early; afterwards the phone keeps the wheel.
 | Tyre Pressure Anomaly | `puncture` | Debris cuts a random tyre, which leaks while the car keeps racing | Air loss detected about 1.6 s after the cut |
 
 When a scenario ends, a watcher (`sidewall/sources/scenarios.py`) times the pit wall's warning against the simulator's
-own record of when the hazard happened, and the phone and the pit-wall log show, e.g., *"SIDEWALL warned 0.2 s before
+own record of when the hazard happened, and the phone and the pit-wall log show, e.g., *"Lightning Response warned 0.2 s before
 the overheating. It also warned 1 time on the approach."* The lead time is measured from the warning that runs into
 the hazard, so an earlier unrelated warning can't inflate it; a miss is reported as a miss.
 

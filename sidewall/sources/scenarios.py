@@ -200,15 +200,15 @@ class ScenarioWatch:
                 lead = round(h - after[0][0], 1)                                  # negative: detected after
             approach = sum(1 for e in eps if e[1] < h - EPISODE_GAP_S)
         if not eps:
-            text = f"SIDEWALL did not flag the {name} in this run."
+            text = f"Lightning Response did not flag the {name} in this run."
         elif h is None:
-            text = f"SIDEWALL warned of {name}, and the tyres stayed just inside the limit."
+            text = f"Lightning Response warned of {name}, and the tyres stayed just inside the limit."
         elif lead is None:
-            text = f"SIDEWALL warned on the approach but missed the {name} itself."
+            text = f"Lightning Response warned on the approach but missed the {name} itself."
         elif lead > 0:
-            text = f"SIDEWALL warned {lead:.1f} s before the {name}."
+            text = f"Lightning Response warned {lead:.1f} s before the {name}."
         else:
-            text = f"SIDEWALL detected the {name} {-lead:.1f} s after it started."
+            text = f"Lightning Response detected the {name} {-lead:.1f} s after it started."
         if approach and h is not None:
             text += f" It also warned {approach} time{'s' if approach > 1 else ''} on the approach."
         return {"type": "scenario_result", "key": self.key, "hazard": name, "lead_s": lead,
