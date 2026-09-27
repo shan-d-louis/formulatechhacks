@@ -359,7 +359,10 @@ function renderLiveState() {
   $("clock").textContent = `lap ${s.lap} · ${s.lap_time.toFixed(1)} s` + (s.best_lap ? ` · best ${s.best_lap.toFixed(2)}` : "");
   renderTelemetry(s);
   $("lap").textContent = s.lap; $("age").textContent = `${s.tyre_life} laps`;
-  $("driverMode").innerHTML = s.mode === "driver" ? `<span style="color:var(--ok)">● Driver on the phone is in control</span>` : `<span class="muted">Autopilot driving. Scan the driver code to take over.</span>`;
+  const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  $("driverMode").innerHTML = s.mode === "scenario" && s.scenario
+    ? `<span style="color:var(--advise)">● Scenario: ${esc(s.scenario.label)}, step ${Math.min(s.scenario.index + 1, s.scenario.n)}/${s.scenario.n}: ${esc(s.scenario.step)}</span>`
+    : s.mode === "driver" ? `<span style="color:var(--ok)">● Driver on the phone is in control</span>` : `<span class="muted">Autopilot driving. Scan the driver code to take over.</span>`;
   const level = liveFrame ? liveFrame.call.level : 0;
   renderMap(s.x, s.y, level);
   if (liveFrame) renderTyres(liveFrame);
@@ -394,6 +397,10 @@ function connect() {
       drivers = msg.driver;
       $("dotDriver").className = `dot${msg.driver ? " live" : ""}`; $("dotCrew").className = `dot${msg.crew ? " live" : ""}`;
     } else if (msg.type === "notice") { toast(msg.text); logLine(liveState ? liveState.t : 0, msg.text, "#94a3b8"); }
+    else if (msg.type === "scenario_result") {   // how early the pit wall saw the scripted hazard coming
+      toast(`🎯 ${msg.text}`);
+      logLine(liveState ? liveState.t : 0, `🎯 ${msg.text}`, msg.warned && (msg.lead_s ?? 1) > 0 ? "#2fd27a" : "#ffc233");
+    }
     else if (msg.type === "new_tyres") onNewTyres("🛞 Driver boxed: fresh tyres fitted");
     else if (msg.type === "crew_ack") toast("✔ Pit crew acknowledged the call");
   };
