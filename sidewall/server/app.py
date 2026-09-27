@@ -296,11 +296,132 @@ def get_job_result(job_id: str):
 @app.get("/api/metrics")
 def metrics():
     out = {}
-    for name in ("tierA_metrics.json", "tierB_metrics.json", "twin_metrics.json"):
+    for name in (
+        "tierA_metrics.json",
+        "tierB_metrics.json",
+        "twin_metrics.json",
+        "risk_metrics.json",
+    ):
         p = config.WEIGHTS / name
         if p.exists():
             out[name.replace("_metrics.json", "")] = json.loads(p.read_text())
     return out
+
+
+def _metric_file(name: str) -> dict[str, Any]:
+    """Load aggregate model metrics from ``models/weights`` when present."""
+
+    path = config.WEIGHTS / name
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def _point(label: str, value: Any) -> dict[str, Any]:
+    """Return a chart point while preserving missing metric values as null."""
+
+    return {"label": label, "value": value if isinstance(value, (int, float)) else None}
+
+
+@app.get("/api/metric-plots")
+def metric_plots():
+    """Return chart-ready aggregate evaluation series for the Atlas UI."""
+
+    tier_a = _metric_file("tierA_metrics.json")
+    tier_b = _metric_file("tierB_metrics.json")
+    risk = _metric_file("risk_metrics.json")
+    twin = _metric_file("twin_metrics.json")
+
+    tier_a_points = []
+    for event, report in tier_a.get("events", {}).items():
+        for split, label in (
+            ("leave_session_out", "unseen drivers"),
+            ("leave_track_out", "unseen tracks"),
+            ("external_thulab_gt_car", "other car"),
+        ):
+            metrics_for_split = report.get(split, {})
+            if metrics_for_split.get("roc_auc") is not None:
+                tier_a_points.append(
+                    {
+                        "event": event,
+                        "split": label,
+                        "roc_auc": metrics_for_split.get("roc_auc"),
+                        "pr_auc": metrics_for_split.get("pr_auc"),
+                    }
+                )
+
+    tier_b_points = []
+    for model_key, title in (
+        ("cliff", "Cliff hazard"),
+        ("failure", "Failure hazard"),
+        ("cliff_horizon", "3-lap cliff horizon"),
+    ):
+        report = tier_b.get(model_key, {})
+        tier_b_points.extend(
+            [
+                {
+                    "model": title,
+                    **_point("train", report.get("train_in_sample", {}).get("roc_auc")),
+                },
+                {"model": title, **_point("CV", report.get("train_cv_grouped_by_race_auc"))},
+                {"model": title, **_point("calib", report.get("calib", {}).get("roc_auc"))},
+                {"model": title, **_point("2025", report.get("test", {}).get("roc_auc"))},
+            ]
+        )
+
+    coverage = tier_b.get("cliff_horizon", {}).get("coverage_conformal", {})
+    calibration = coverage.get("calibration_k5", {})
+    calibration_points = [
+        {
+            "bin": str(idx),
+            "predicted": row.get("pred"),
+            "observed": row.get("obs"),
+            "n": row.get("n"),
+        }
+        for idx, row in sorted(calibration.items(), key=lambda item: int(item[0]))
+    ]
+
+    reliability = []
+    for source, source_report in risk.items():
+        for event, report in source_report.items():
+            reliability.append(
+                {
+                    "source": source,
+                    "event": event,
+                    "points": report.get("reliability", []),
+                    "roc_auc_stage1": report.get("stage1_only", {}).get("roc_auc"),
+                    "roc_auc_stage2": report.get("stage1_plus_stage2", {}).get("roc_auc"),
+                }
+            )
+
+    tpms = twin.get("leave_track_out", {})
+    tpms_points = []
+    for target in ("core", "surf"):
+        for wheel in ("fl", "fr", "rl", "rr"):
+            report = tpms.get(f"{target}_{wheel}", {})
+            tpms_points.append(
+                {
+                    "target": target,
+                    "wheel": wheel.upper(),
+                    "mae_c": report.get("mae_c"),
+                    "baseline_mae_c": report.get("baseline_mae_c"),
+                }
+            )
+
+    return {
+        "tierA": {"title": "Tier A event detectors", "points": tier_a_points},
+        "tierB": {"title": "Tier B tyre-life hazards", "points": tier_b_points},
+        "cliffCalibration": {
+            "title": "Conformal safe-laps calibration",
+            "risk_level": coverage.get("risk_level"),
+            "violation_rate": coverage.get("violation_rate"),
+            "points": calibration_points,
+        },
+        "riskReliability": {"title": "Risk calibration reliability", "series": reliability},
+        "virtualTpms": {
+            "title": "Virtual TPMS leave-track-out error",
+            "pressure_from_gas_law_mae_psi": twin.get("pressure_from_gas_law_mae_psi"),
+            "points": tpms_points,
+        },
+    }
 
 
 @app.get("/api/atlas")
