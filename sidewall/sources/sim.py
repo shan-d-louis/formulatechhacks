@@ -123,9 +123,6 @@ class TyreSim:
         self.truth = {"lockup": False, "wheelspin": False, "slide": False, "off": False}
         self.inputs = {"throttle": 0.0, "brake": 0.0}
         self.autopilot = True
-        # Set by a scripted scenario: the car drives a virtual straight / corner of this curvature (1/m, > 0 left)
-        # instead of the circuit's, so the script's own braking zones and corners decide what the tyres feel.
-        self.script_kappa: float | None = None
 
     # ---------------------------------------------------------------- helpers
     def _at(self, arr):
@@ -148,9 +145,6 @@ class TyreSim:
         pressure = max(0.75, 1.0 - 0.04 * abs(self.psi(w) - self.psi_target(w)))
         return (0.72 + 0.28 * window) * pressure * (1.0 - 0.35 * min(self.wear[w], 1.0))
 
-    def _kappa(self) -> float:
-        return self._at(self.p["kappa"]) if self.script_kappa is None else self.script_kappa
-
     def debris(self):
         w = WHEELS[self.rng.integers(4)]
         self.leak_rate[w] = 0.0012                                # ~7 % of the gas per minute
@@ -169,7 +163,7 @@ class TyreSim:
         v = max(self.v, 1.0)
         down = 1.0 + (v / 83.0) ** 2 * 2.5
         mu_g = 1.7 * G * down
-        a_lat = v * v * self._kappa()
+        a_lat = v * v * self._at(self.p["kappa"])
         lat_used = min(abs(a_lat) / mu_g, 0.98)
         long_avail = mu_g * np.sqrt(1 - lat_used ** 2)
         grip_f = (self._grip("fl") + self._grip("fr")) / 2
@@ -196,7 +190,7 @@ class TyreSim:
     def step(self, dt: float = 0.05) -> dict:
         thr, brk = (self._autopilot() if self.autopilot else (self.inputs["throttle"], self.inputs["brake"]))
         v = max(self.v, 1.0)
-        kappa = self._kappa()
+        kappa = self._at(self.p["kappa"])
         v_ref = self._at(self.p["v_ref"])
         a_lat = v * v * kappa                                    # signed: > 0 turning left
         down = 1.0 + (v / 83.0) ** 2 * 2.5                       # downforce multiplier on grip
@@ -208,8 +202,6 @@ class TyreSim:
 
         # Cornering limit from the real lap, scaled by the current tyre grip.
         v_lim = v_ref * np.sqrt(min(grip_f, grip_r) / 0.93) * 1.03
-        if self.script_kappa is not None:   # scripted corner: the limit is where lateral demand exceeds the grip
-            v_lim = np.sqrt(mu_g * min(grip_f, grip_r) / abs(kappa)) if abs(kappa) > 1e-6 else np.inf
         if v > v_lim:
             excess = v / v_lim - 1
             truth["slide"] = True

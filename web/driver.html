@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0b0e14">
-<title>Lightning Response Driver</title>
+<title>SIDEWALL Driver</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap">
@@ -24,7 +24,7 @@
   .lapt b { color: var(--text); font-size: 18px; }
   /* Centre cluster: brake | speedometer | throttle, stacked (speedometer on top) on narrow screens. */
   .cluster { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: clamp(12px, 3vw, 28px);
-    padding: 8px 16px calc(44px + env(safe-area-inset-bottom)); }
+    padding: 12px 16px calc(56px + env(safe-area-inset-bottom)); }
   /* Centre column: BOX button (a third of the speedometer's width) above the speedometer. */
   .centre { flex: none; width: min(360px, 42vw); display: flex; flex-direction: column; align-items: center; gap: 8px; }
   .boxbtn { width: 33.333%; height: clamp(32px, 9vh, 46px); border-radius: 12px; border: 2px solid var(--line);
@@ -37,7 +37,7 @@
   }
   .boxbtn.sent { color: var(--text); border-color: var(--text); animation: none; font-size: clamp(11px, 3vh, 14px); letter-spacing: .08em; }
   /* Speedometer: SVG gauge. Needle and arc follow the sim's speed; inner arcs show brake (left) and throttle (right). */
-  .speedo { flex: none; width: 100%; height: clamp(80px, 28vh, 180px);
+  .speedo { flex: none; width: 100%; height: clamp(80px, 38vh, 200px);
     border-radius: 16px; border: 2px solid var(--line);
     background: var(--panel); display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .speedo svg { width: 100%; height: 100%; display: block; }
@@ -53,19 +53,6 @@
   .g-val { fill: var(--text); font: 800 34px var(--mono); text-anchor: middle; }
   .g-unit { fill: var(--muted); font: 500 10px var(--mono); text-anchor: middle; letter-spacing: .08em; }
   .g-gear { fill: var(--accent); font: 800 15px var(--mono); text-anchor: middle; }
-  /* Scenario: demo buttons under the speedometer that force the live car into a safety risk. */
-  /* Sits 30px lower than its place in the column (relative offset, so the BOX button and speedometer don't move). */
-  .scenario { position: relative; top: 30px; width: 100%; border: 1px solid var(--line); border-radius: 14px;
-    background: var(--panel); padding: 8px; }
-  .scenario h2 { margin: 0 0 7px; font-size: 12px; font-weight: 800; letter-spacing: .16em; color: var(--muted); text-align: center; }
-  .scn-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .scn { min-height: clamp(44px, 13vh, 60px); padding: 6px; border-radius: 11px; border: 1px solid var(--line);
-    background: var(--panel-2); color: var(--text); font: 700 13px/1.15 var(--sans); cursor: pointer; touch-action: none; }
-  .scn.on { border-color: var(--advise); color: var(--advise); box-shadow: 0 0 10px rgba(255, 194, 51, .35); }
-  .scn-status { min-height: 1.3em; margin-top: 6px; font-size: 12px; color: var(--muted); text-align: center;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .scn-status.result { color: var(--advise); font-weight: 700; white-space: normal; line-height: 1.25; }
-  body.scripted .pedal { opacity: .45; }            /* the script has the pedals; the gauge shows what it presses */
   /* Brake left of the speedometer, throttle right: hold to press further. */
   .pedal { flex: none; position: relative; width: clamp(96px, 20vw, 150px); height: clamp(90px, 38vh, 200px); border-radius: 18px;
     border: 2px solid #1e293b; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #121824;
@@ -74,8 +61,6 @@
     .cluster { flex-wrap: wrap; align-content: center; }
     .centre { order: -1; width: 100%; max-width: 520px; }
     .speedo { height: clamp(80px, 28vh, 170px); }
-    .scenario { top: 0; margin-top: 30px; }            /* stacked layout: push the pedals down with it */
-    .scn { font-size: 14px; }
     .pedal { height: clamp(90px, 24vh, 160px); width: clamp(110px, 38vw, 170px); }
   }
   .pedal .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; opacity: .9; }
@@ -92,7 +77,7 @@
   .gate p { margin: 0; color: var(--muted); max-width: 440px; }
   .gate .btn.primary { font-size: 20px; padding: 16px 28px; border-radius: 14px; }
   .rot { font-size: 13px; color: var(--advise); }
-  .release { position: fixed; bottom: 14px; left: 16px; z-index: 3; font-size: 12px; opacity: .85; }
+  .release { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 3; font-size: 12px; opacity: .85; }
   .shake { animation: shake .18s; } @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
   .flash-lock { box-shadow: inset 0 0 0 6px #ff2a4b; } .flash-spin { box-shadow: inset 0 0 0 6px #2fd27a; }
 </style>
@@ -122,16 +107,6 @@
         <text class="g-gear" id="g-gear" x="150" y="166">–</text>
       </svg>
     </div>
-    <section class="scenario" aria-label="Scenario">
-      <h2>SCENARIO</h2>
-      <div class="scn-btns">
-        <button class="scn" type="button" data-scenario="lockup">Lock-up</button>
-        <button class="scn" type="button" data-scenario="wheelspin">Wheelspin</button>
-        <button class="scn" type="button" data-scenario="pressure">Tyre Pressure Anomaly</button>
-        <button class="scn" type="button" data-scenario="overheat">Tyre Overheating</button>
-      </div>
-      <div class="scn-status" id="scnStatus" aria-live="polite"></div>
-    </section>
     </div>
     <div class="pedal" id="throttle"><div class="fill"></div><div class="lbl">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="15" rx="2.5"/><path d="M10 6.5h4M10 10h4M10 13.5h4M12 17.5v3M8 21h8"/></svg>
@@ -140,7 +115,7 @@
   <button class="btn small release" id="release" hidden>Hand back to autopilot</button>
 
   <div class="gate" id="gate">
-    <h1>Lightning Response · Driver</h1>
+    <h1>SIDEWALL · Driver</h1>
     <p>You're the driver. Steering follows the racing line; you control the <b>brake</b> (left) and <b>throttle</b> (right).
       Hold a button to press further; let go to release it. Brake too late or floor it out of slow corners and the pit wall will see it coming.
       When the <b>BOX</b> button above the speedometer blinks, tap it for fresh tyres.</p>
@@ -159,9 +134,7 @@ function connect() {
   ws.onclose = () => { $("claim").disabled = true; $("claim").textContent = "Reconnecting…"; setTimeout(connect, 1000); };
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
-    if (m.type === "scenario_result" || m.type === "scenario_error") { showScenarioNote(m.text, m.type === "scenario_result"); return; }
     if (m.type !== "state") return;
-    renderScenario(m.scenario);
     $("spd").textContent = Math.round(m.speed); $("gear").textContent = `gear ${m.gear}`;
     gauge.target = m.speed; gauge.gear = `GEAR ${m.gear}`; gauge.srvThr = m.throttle || 0; gauge.srvBrk = m.brake || 0;
     $("lap").textContent = m.lap; $("lapt").textContent = m.lap_time.toFixed(1);
@@ -206,8 +179,7 @@ function drawGauge(now) {
   $("g-val").textContent = Math.round(gauge.shown);
   $("g-gear").textContent = gauge.gear;
   // While driving, the inner arcs follow this phone's pedals instantly; otherwise they show the autopilot's.
-  const own = driving && !scenario;                // a running scenario presses the pedals, not this phone
-  const thr = own ? state.throttle : gauge.srvThr, brk = own ? state.brake : gauge.srvBrk;
+  const thr = driving ? state.throttle : gauge.srvThr, brk = driving ? state.brake : gauge.srvBrk;
   for (const [id, v] of [["g-thr", thr], ["g-brk", brk]]) {
     $(id).setAttribute("stroke-dasharray", `${v} 1`); $(id).style.visibility = v > 0.005 ? "visible" : "hidden";   // no round-cap dot at 0
   }
@@ -255,42 +227,6 @@ function bindPedal(id) {
   el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up); el.addEventListener("lostpointercapture", up);
 }
 bindPedal("brake"); bindPedal("throttle");
-
-// Scenario buttons: force the live car into a safety risk for the demo. The server runs the matching script
-// from simulator/scenarios.json (Tyre Pressure Anomaly = 'puncture', Tyre Overheating = 'corner') and takes the
-// pedals until it ends; the pit wall should warn before the hazard. Tap the lit button again to stop early.
-const BTN_OF = { lockup: "lockup", wheelspin: "wheelspin", puncture: "pressure", corner: "overheat" };
-let scenario = null, noteTimer = null, startTimer = null;
-document.querySelectorAll(".scn").forEach((b) => b.addEventListener("pointerdown", (e) => {
-  e.preventDefault();
-  if (!driving) return;
-  navigator.vibrate?.(30);
-  if (scenario && BTN_OF[scenario.key] === b.dataset.scenario) send({ type: "scenario_stop" });
-  else {
-    send({ type: "scenario", key: b.dataset.scenario }); showScenarioNote("Starting…");
-    // The server answers within a state update (10 Hz). Silence means it can't run scenarios.
-    clearTimeout(startTimer);
-    startTimer = setTimeout(() => { if (!scenario && $("scnStatus").textContent === "Starting…")
-      showScenarioNote("No response from the server. Restart it so it has the scenario code.", true); }, 3000);
-  }
-}));
-function renderScenario(sc) {
-  scenario = sc || null;
-  document.body.classList.toggle("scripted", !!scenario);
-  document.querySelectorAll(".scn").forEach((x) => x.classList.toggle("on", !!scenario && BTN_OF[scenario.key] === x.dataset.scenario));
-  if (scenario) {
-    clearTimeout(noteTimer);
-    const st = $("scnStatus"); st.classList.remove("result");
-    st.textContent = `Step ${Math.min(scenario.index + 1, scenario.n)}/${scenario.n}: ${scenario.step}`;
-  } else if (!$("scnStatus").classList.contains("result") && !noteTimer) {
-    $("scnStatus").textContent = "";
-  }
-}
-function showScenarioNote(text, isResult = false) {
-  const st = $("scnStatus"); st.textContent = text; st.classList.toggle("result", isResult);
-  clearTimeout(noteTimer);
-  noteTimer = setTimeout(() => { noteTimer = null; if (!scenario) { st.textContent = ""; st.classList.remove("result"); } }, isResult ? 10000 : 3000);
-}
 
 // BOX: one tap fits fresh tyres (the server resets the stint; this phone keeps the wheel).
 let boxTimer = null;

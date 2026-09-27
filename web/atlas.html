@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lightning Response Tyre Atlas</title>
+<title>SIDEWALL Tyre Atlas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap">
@@ -32,7 +32,7 @@
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="/" aria-label="Lightning Response home"><img src="/static/lightning-response.png" alt="Lightning Response"><span>Tyre Safety Atlas</span></a>
+  <a class="brand" href="/"><b>SIDEWALL</b><span>Tyre Safety Atlas</span></a>
   <nav class="tabs">
     <a href="/pitwall?mode=replay">Replay a real race</a>
     <a href="/pitwall?mode=live">Drive it yourself</a>
@@ -115,8 +115,8 @@ function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
     .map(([k, v]) => `<div class="panel stat"><div class="muted" style="font-size:12px">${k}</div><div class="v">${v}</div></div>`).join("");
   const q = a.qatar;
   $("qatar").innerHTML = q && q.model_cap_10pct != null
-    ? `<b>Qatar check.</b> After sidewall failures in 2023 the FIA imposed an emergency <b>${q.fia_cap_2023}-lap</b> maximum per set (${q.fia_cap_2025} in 2025). From lap-time data alone, Lightning Response's data-driven cap for ${q.circuit} is <b>${q.model_cap_10pct} laps</b>, and the same method produces a cap for <b>every</b> circuit before anything goes wrong.`
-    : `<b>A data-driven "Qatar rule" for every circuit.</b> After sidewall failures at Qatar 2023 the FIA imposed an emergency 18-lap maximum per set. Lightning Response derives the equivalent cap for every circuit from lap-time data, before anything goes wrong. Seasons in the atlas: ${s.seasons.join(", ")}.`;
+    ? `<b>Qatar check.</b> After sidewall failures in 2023 the FIA imposed an emergency <b>${q.fia_cap_2023}-lap</b> maximum per set (${q.fia_cap_2025} in 2025). From lap-time data alone, SIDEWALL's data-driven cap for ${q.circuit} is <b>${q.model_cap_10pct} laps</b>, and the same method produces a cap for <b>every</b> circuit before anything goes wrong.`
+    : `<b>A data-driven "Qatar rule" for every circuit.</b> After sidewall failures at Qatar 2023 the FIA imposed an emergency 18-lap maximum per set. SIDEWALL derives the equivalent cap for every circuit from lap-time data, before anything goes wrong. Seasons in the atlas: ${s.seasons.join(", ")}.`;
   const maxCap = Math.max(...a.circuits.map((c) => c.stint_cap_10pct || 0));
   $("circ").innerHTML = `<tr><th>Circuit</th><th>Cap</th><th></th><th>Cliff rate</th><th>Deg s/lap</th><th>Stints</th></tr>` +
     a.circuits.map((c, i) => `<tr data-i="${i}"><td>${c.circuit}</td><td class="num">${c.stint_cap_10pct ?? "–"}</td>

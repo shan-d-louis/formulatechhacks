@@ -1,4 +1,4 @@
-# Lightning Response: AI tyre-safety pit wall
+# SIDEWALL: AI tyre-safety pit wall
 
 **FormulaTech Hacks: Track 1 (Safety Diagnosis) · Ollon (Data-Driven Motorsport Safety) · Ampere (AI for Motorsport Safety)**
 
@@ -9,10 +9,10 @@ Since 2022 every F1 car has carried a standard FIA tyre-pressure sensor, but the
 - **Qatar 2023:** kerbs caused sidewall damage, and the FIA imposed an emergency 18-lap cap.
 - **Nürburgring 2005:** a flat spot vibrated a suspension to failure.
 
-Lightning Response watches every tyre in real time. It detects lock-ups, wheelspin, overheating, cold tyres, flat spots and air loss. It predicts how many laps each tyre has left, and radios the pit crew's phones when it's time to box.
+SIDEWALL watches every tyre in real time. It detects lock-ups, wheelspin, overheating, cold tyres, flat spots and air loss. It predicts how many laps each tyre has left, and radios the pit crew's phones when it's time to box.
 
 ## How it maps to the tracks
-| | What Lightning Response does |
+| | What SIDEWALL does |
 |---|---|
 | **Track 1: Safety Diagnosis** | Real-time per-tyre health (0–100) and an escalating pit call (OK, ADVISE, BOX THIS LAP, BOX NOW), sent to crew phones. Lock-up and wheelspin warnings come 0.5–1.75 s early, and the laps-to-failure bound is ready before the cliff arrives. |
 | **Ollon: data-driven** | 2018–2025 FastF1 data (thousands of stints) turned into a tyre-safety dataset, and a **data-driven stint cap for every circuit** (Kaplan–Meier), i.e. a "Qatar rule" everywhere before anything breaks. |
@@ -86,7 +86,7 @@ Expected data sources include:
 
 ### TyreFrame Normalization
 
-Lightning Response maps source exports into hierarchical `TyreFrame` tables rather than one
+SIDEWALL maps source exports into hierarchical `TyreFrame` tables rather than one
 flat row-level join. `outputs/telemetry_output.csv` and `outputs/openf1_output.csv`
 provide public F1 macro context such as driver, elapsed time, speed, throttle, brake,
 RPM, compound, tyre life, and weather. `datasets/spa/event_windows.csv` and
@@ -136,7 +136,7 @@ normalization update.
 
 ### Target Open Datasets and APIs
 
-| Source | Access | Useful fields | Lightning Response use |
+| Source | Access | Useful fields | SIDEWALL use |
 |---|---|---|---|
 | **FastF1 Python library / data API** | GitHub `theOehrly/Fast-F1` or PyPI package `fastf1` | `Speed`, `Throttle`, `Brake`, `RPM`, `Gear`, `TrackTemp`, `AirTemp`, lap and stint context | Primary public telemetry source for replay, braking-zone analysis, tyre-stint context, weather context, and fuel-adjusted lap-time modelling. |
 | **OpenF1 API** | `https://openf1.org` | Historical and live JSON/CSV streams for speed, throttle, RPM, timing intervals, session context | API-friendly telemetry source for live-ish demos, driver-specific timing, micro-sector deltas, and acceleration-drop analysis. |
@@ -145,7 +145,7 @@ normalization update.
 Known useful Kaggle targets:
 
 - `navenkumar1998/formula-1-dataset-with-weather-and-tyre-features`: primary Kaggle
-  target for Lightning Response stint and degradation experiments. It is lap-level and includes
+  target for SIDEWALL stint and degradation experiments. It is lap-level and includes
   tyre/stint features such as compound, tyre life, fresh tyre, and stint, plus weather
   context such as air temperature, track temperature, rainfall, humidity, and wind.
 
@@ -227,7 +227,7 @@ or the relevant local docs in the same pass.
 
 ## Setup
 
-This project uses Python 3.13 or newer for the main Lightning Response app. The easiest
+This project uses Python 3.13 or newer for the main SIDEWALL app. The easiest
 reproducible setup is with `uv`:
 
 ```bash
@@ -410,7 +410,7 @@ uv run pytest -q backend/tests
 
 ## Model Serving API
 
-The Lightning Response server also exposes the tyre-life model as a low-latency FastAPI surface.
+The SIDEWALL server also exposes the tyre-life model as a low-latency FastAPI surface.
 Small predictions stay on the API path, while replay rebuilds and heavier analytics are
 queued for a background worker so the API can respond immediately.
 
