@@ -1,0 +1,69 @@
+f1-hacks-ui-designer Design UI components, layouts, and web interfaces for F1 Hacks projects using a specific vibrant, high-contrast, racing-inspired color palette and incorporating the official F1 Hacks logo. Use when designing user interfaces, Tailwind configurations, or React/HTML layouts for F1 Hacks.
+Instructions
+F1 Hacks UI Designer
+This skill provides guidelines and exact specifications for designing user interfaces, Tailwind CSS configurations, and frontend components for F1 Hacks project interfaces.
+Brand Assets & Logo Integration
+Official Logo Specifications
+The logo features a bold, high-contrast street-art / racing hybrid style with distinct outlines and dynamic lines [cite: 1].
+
+Logo Visual: A prominent "F1 HACKS" text mark with racing track flourishes and curved accent lines [cite: 1].
+Default Logo Path/URL: /assets/f1-hacks-logo.png (or public relative path f1-hacks-logo.png)
+Usage Guidelines:
+
+Always render the logo on a high-contrast background (either off-white or dark navy/black).
+Use thick, crisp rounded borders or cards when embedding the logo into header components or hero sections to align with its bold outline style [cite: 1].
+
+
+
+
+Color Palette
+The color system is extracted directly from the F1 Hacks visual identity [cite: 1]:
+
+RoleColor NameHex CodeUsage / ContextPrimary AccentRacing Red#E63946Primary CTAs, active states, key racing track accents [cite: 1]Secondary AccentCyan Blue#45B7D1Highlights, badges, secondary actions, links [cite: 1]Dark Neutral / TextDeep Navy Black#0F111ADark mode background, bold outlines, primary typography [cite: 1]Light NeutralCream Off-White#FAF8F2Light mode primary background, card fills [cite: 1]Surface AccentWhite#FFFFFFHigh-contrast card containers and input backgrounds
+
+
+Tailwind CSS Configuration
+When providing CSS or Tailwind themes, instruct or generate the following configuration:
+// tailwind.config.js
+module.exports = {
+  theme: {
+    extend: {
+      colors: {
+        'f1-red': '#E63946',
+        'f1-cyan': '#45B7D1',
+        'f1-dark': '#0F111A',
+        'f1-cream': '#FAF8F2',
+      },
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        display: ['Impact', 'Bebas Neue', 'sans-serif'],
+      },
+      borderWidth: {
+        '3': '3px',
+      }
+    },
+  },
+};
+
+
+Component Guidelines
+
+
+Headers & Navigation:
+
+Place the logo prominently in the top-left navigation bar [cite: 1].
+Provide high contrast between navigation links and the background [cite: 1].
+
+
+
+Buttons & Interactive Elements:
+
+Primary buttons: bg-f1-red text-white hover:bg-red-600 font-bold px-6 py-2 rounded-xl border-2 border-f1-dark shadow-[4px_4px_0px_0px_#0F111A] [cite: 1].
+Secondary buttons: bg-f1-cyan text-f1-dark hover:bg-cyan-400 font-bold px-6 py-2 rounded-xl border-2 border-f1-dark [cite: 1].
+
+
+
+Card Containers:
+
+Light theme cards: bg-white border-3 border-f1-dark rounded-2xl p-6 shadow-[6px_6px_0px_0px_#0F111A] [cite: 1].
+Dark theme cards: bg-f1-dark border-2 border-f1-cyan rounded-2xl p-6 text-f1-cream [cite: 1].

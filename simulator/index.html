@@ -5,26 +5,87 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tire Sim</title>
 <style>
-  :root { --bg:#0e1116; --panel:#171b22; --line:#2a303a; --text:#e6e8eb; --dim:#8a93a0; --ok:#3ecf8e; --bad:#ff5d5d; --acc:#4ea1ff; }
+  :root { --bg:#0e1116; --panel:#171b22; --line:#2a303a; --text:#e6e8eb; --dim:#8a93a0; --ok:#3ecf8e; --bad:#ff5d5d; --acc:#4ea1ff; --amber:#ffb020; }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, sans-serif; display:flex; flex-direction:column; height:100vh; }
-  header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, sans-serif; display:flex; flex-direction:column; overflow:hidden; }
+  header { display:flex; align-items:center; gap:12px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
   header h1 { font-size:14px; margin:0; letter-spacing:.04em; }
-  .main { flex:1; display:flex; min-height:0; }
-  #view { flex:1; position:relative; min-width:0; }
-  canvas { display:block; width:100%; height:100%; }
-  #hud { position:absolute; left:12px; top:12px; background:rgba(23,27,34,.85); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-variant-numeric:tabular-nums; }
-  #hud .big { font-size:28px; font-weight:700; }
-  aside { width:300px; background:var(--panel); border-left:1px solid var(--line); padding:14px; overflow-y:auto; }
-  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:18px 0 8px; }
-  h2:first-child { margin-top:0; }
-  button, select { width:100%; padding:8px 10px; margin:3px 0; background:#222834; color:var(--text); border:1px solid var(--line); border-radius:6px; font:inherit; cursor:pointer; text-align:left; }
-  button:hover { border-color:var(--acc); }
-  button.active { border-color:var(--acc); background:#1d2a3d; }
-  .row { display:flex; gap:6px; } .row > * { flex:1; }
-  .conn { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--dim); }
+  .conn { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--dim); margin-left:auto; }
   .dot { width:10px; height:10px; border-radius:50%; background:var(--bad); }
   .dot.on { background:var(--ok); }
+  #drawerBtn { width:auto; margin:0; padding:6px 12px; text-align:center; }
+
+  /* Cockpit: status, tachometer, driving buttons */
+  .cockpit { position:relative; flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; gap:14px; padding:14px 16px 18px; overflow-y:auto; }
+  .status { display:flex; flex-wrap:wrap; justify-content:center; gap:6px 16px; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .status b { color:var(--text); font-weight:600; }
+  #hudScenario { color:var(--acc); font-weight:600; min-height:1.4em; text-align:center; }
+  .tach { width:min(420px, 100%); flex-shrink:0; }
+  .tach svg { width:100%; height:auto; display:block; }
+  .tach .face { fill:#12161c; stroke:var(--line); stroke-width:2; }
+  .tach .tick { stroke:#58616e; stroke-width:1.5; }
+  .tach .tick.major { stroke:#aeb6c2; stroke-width:3; }
+  .tach .num { fill:#aeb6c2; font:600 15px system-ui, sans-serif; text-anchor:middle; dominant-baseline:central; }
+  .tach .redline { fill:none; stroke:var(--bad); stroke-width:10; }
+  .tach .needle { stroke:var(--amber); stroke-width:4; stroke-linecap:round; }
+  .tach .hub { fill:var(--amber); }
+  .tach .gear { fill:var(--text); font:800 64px system-ui, sans-serif; text-anchor:middle; dominant-baseline:central; }
+  .tach .speed { fill:var(--text); font:700 24px system-ui, sans-serif; text-anchor:middle; font-variant-numeric:tabular-nums; }
+  .tach .unit { fill:var(--dim); font:500 12px system-ui, sans-serif; text-anchor:middle; letter-spacing:.08em; }
+  .tach .rpm { fill:var(--dim); font:600 13px system-ui, sans-serif; text-anchor:middle; font-variant-numeric:tabular-nums; }
+  .tach .led { fill:#222834; }
+  .tach .led.g { fill:var(--ok); } .tach .led.r { fill:var(--bad); } .tach .led.b { fill:var(--acc); }
+  .tach.limiter .led { animation:blink .12s steps(2) infinite; }
+  @keyframes blink { 50% { opacity:.2; } }
+  .inputs { width:min(420px, 100%); display:grid; grid-template-columns:auto 1fr; gap:4px 10px; align-items:center; font-size:12px; color:var(--dim); }
+  .inputs .bar { height:6px; background:#222834; border-radius:3px; overflow:hidden; position:relative; }
+  .inputs .bar > div { height:100%; width:0; }
+
+  .controls { width:min(720px, 100%); display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:auto; }
+  .cluster { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .drive { margin:0; min-height:110px; border-radius:14px; border:2px solid var(--line); background:#1b212b; color:var(--text);
+           font:700 18px system-ui, sans-serif; text-align:center; cursor:pointer; touch-action:none; user-select:none;
+           -webkit-user-select:none; -webkit-touch-callout:none; transition:background .08s, border-color .08s, transform .08s; }
+  .drive small { display:block; font:500 11px system-ui, sans-serif; color:var(--dim); margin-top:4px; }
+  .drive:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  .drive.held { transform:scale(.97); }
+  .drive[data-ctl="throttle"].held { background:rgba(62,207,142,.22); border-color:var(--ok); }
+  .drive[data-ctl="brake"].held { background:rgba(255,93,93,.22); border-color:var(--bad); }
+  .drive[data-ctl="left"].held, .drive[data-ctl="right"].held { background:rgba(78,161,255,.22); border-color:var(--acc); }
+  @media (max-width:560px) { .controls { grid-template-columns:1fr; } .drive { min-height:90px; } }
+
+  /* Car view: small top-down view of the car on a moving road (display only) */
+  .mini { position:absolute; top:12px; left:16px; width:220px; height:160px; border:1px solid var(--line); border-radius:10px;
+          overflow:hidden; background:#1b3a23; box-shadow:0 6px 18px rgba(0,0,0,.35); }
+  .mini canvas { display:block; width:100%; height:100%; }
+  .mini .label { position:absolute; left:8px; top:6px; font-size:10px; font-weight:700; letter-spacing:.1em; color:rgba(230,232,235,.75);
+                 text-shadow:0 1px 2px rgba(0,0,0,.8); pointer-events:none; }
+  @media (max-width:760px) {
+    .mini { position:relative; top:0; left:0; width:min(280px, 100%); height:120px; flex-shrink:0; }
+    .cockpit { gap:10px; padding-top:10px; }
+    .tach { width:min(270px, 100%); }  /* leave room for all four buttons without scrolling */
+  }
+  @media (max-width:760px) and (max-height:780px) {  /* short phones */
+    .mini { height:96px; } .tach { width:min(200px, 100%); } .drive { min-height:74px; } .cockpit { gap:8px; }
+  }
+
+  /* Slide-out drawer: scenarios, tire age, sensors */
+  #scrim { position:fixed; inset:0; background:rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .25s; z-index:19; }
+  #scrim.open { opacity:1; pointer-events:auto; }
+  aside { position:fixed; top:0; right:0; height:100%; width:min(340px, 92vw); background:var(--panel); border-left:1px solid var(--line);
+          padding:14px; overflow-y:auto; z-index:20; transform:translateX(100%); transition:transform .25s ease; }
+  aside.open { transform:none; box-shadow:-12px 0 32px rgba(0,0,0,.4); }
+  @media (prefers-reduced-motion: reduce) { aside, #scrim, .drive { transition:none; } }
+  .drawer-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .drawer-head h2 { margin:0; }
+  #drawerClose { width:auto; margin:0; padding:2px 10px; font-size:18px; line-height:1.2; text-align:center; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:18px 0 8px; }
+  aside button, aside select { width:100%; padding:8px 10px; margin:3px 0; background:#222834; color:var(--text); border:1px solid var(--line); border-radius:6px; font:inherit; cursor:pointer; text-align:left; }
+  button:hover { border-color:var(--acc); }
+  button.active { border-color:var(--acc); background:#1d2a3d; }
+  header button { background:#222834; color:var(--text); border:1px solid var(--line); border-radius:6px; font:inherit; cursor:pointer; }
+  .row { display:flex; gap:6px; } .row > * { flex:1; }
   kbd { background:#222834; border:1px solid var(--line); border-radius:4px; padding:0 5px; font-size:12px; }
   .keys { color:var(--dim); font-size:12px; line-height:1.9; }
   table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:13px; }
@@ -39,17 +100,56 @@
 <body>
 <header>
   <h1>TIRE SIM</h1>
+  <button id="drawerBtn" aria-controls="drawer" aria-expanded="false">☰ Scenarios &amp; tires</button>
   <div class="conn" title="" id="conn"><span class="dot" id="dot"></span><span id="connText">Backend offline</span></div>
 </header>
-<div class="main">
-<div id="view">
-  <canvas id="c"></canvas>
-  <div id="hud"><div class="big" id="hudSpeed">0</div><div>kph · lap <span id="hudLap">1</span> · age <span id="hudAge">0.0</span> laps <span id="hudDemo" style="color:var(--acc)"></span></div><div id="hudScenario" style="color:var(--acc)"></div></div>
-</div>
-<aside>
-  <h2>Scenarios</h2>
+
+<main class="cockpit">
+  <div class="mini" aria-hidden="true"><canvas id="miniView"></canvas><span class="label">CAR VIEW</span></div>
+  <div class="status">
+    <span>Lap <b id="hudLap">1</b></span>
+    <span>Tire age <b id="hudAge">0.0</b> laps <span id="hudDemo" style="color:var(--acc)"></span></span>
+  </div>
+  <div id="hudScenario"></div>
+
+  <div class="tach" id="tach">
+    <svg viewBox="0 0 300 290" role="img" aria-label="Tachometer">
+      <circle class="face" cx="150" cy="160" r="128"/>
+      <g id="tachLeds"></g>
+      <path class="redline" id="tachRedline"/>
+      <g id="tachTicks"></g>
+      <text class="gear" id="tachGear" x="150" y="116">N</text>
+      <text class="speed" id="tachSpeed" x="150" y="212">0</text>
+      <text class="unit" x="150" y="230">KPH</text>
+      <text class="rpm" id="tachRpm" x="150" y="252">0 rpm</text>
+      <line class="needle" id="tachNeedle" x1="150" y1="160" x2="150" y2="54"/>
+      <circle class="hub" cx="150" cy="160" r="7"/>
+    </svg>
+  </div>
+
+  <div class="inputs" aria-hidden="true">
+    <span>Throttle</span><div class="bar"><div id="barThr" style="background:var(--ok)"></div></div>
+    <span>Brake</span><div class="bar"><div id="barBrk" style="background:var(--bad)"></div></div>
+    <span>Steer</span><div class="bar"><div id="barStr" style="background:var(--acc); position:absolute; left:50%"></div></div>
+  </div>
+
+  <div class="controls">
+    <div class="cluster">
+      <button class="drive" data-ctl="left" aria-pressed="false">◀ Left<small>A / ←</small></button>
+      <button class="drive" data-ctl="right" aria-pressed="false">Right ▶<small>D / →</small></button>
+    </div>
+    <div class="cluster">
+      <button class="drive" data-ctl="brake" aria-pressed="false">Brake<small>S / ↓</small></button>
+      <button class="drive" data-ctl="throttle" aria-pressed="false">Throttle<small>W / ↑</small></button>
+    </div>
+  </div>
+</main>
+
+<div id="scrim"></div>
+<aside id="drawer" aria-label="Scenarios and settings">
+  <div class="drawer-head"><h2>Scenarios</h2><button id="drawerClose" aria-label="Close">×</button></div>
   <button data-scn="lockup">Hard braking at speed → front lock-up <kbd>1</kbd></button>
-  <button data-scn="wheelspin">Full throttle from low speed → wheelspin <kbd>2</kbd></button>
+  <button data-scn="wheelspin">Full-throttle launch → wheelspin <kbd>2</kbd></button>
   <button data-scn="corner">Sustained cornering → overheat <kbd>3</kbd></button>
   <div class="row">
     <select id="punctureTire"><option>FL</option><option>FR</option><option>RL</option><option selected>RR</option></select>
@@ -72,8 +172,8 @@
   </div>
   <div class="note" id="demoStatus"></div>
 
-  <h2>Controls</h2>
-  <div class="keys"><kbd>W</kbd>/<kbd>↑</kbd> throttle · <kbd>S</kbd>/<kbd>↓</kbd> brake · <kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd> steer<br><kbd>Space</kbd> stamp on the brakes (can lock) · <kbd>Esc</kbd> cancel scenario</div>
+  <h2>Driving</h2>
+  <div class="keys">Hold the on-screen buttons, or use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows.<br><kbd>Space</kbd> stamp on the brakes (can lock) · <kbd>Esc</kbd> close this panel / cancel scenario</div>
 
   <h2>Raw sensors (sent at 10 Hz)</h2>
   <table>
@@ -82,7 +182,6 @@
   </table>
   <p class="note">Simulated sensor data. This page only sends raw frames; all detection runs in the backend.</p>
 </aside>
-</div>
 
 <script>
 // ---------- Constants (sim physics only) ----------
@@ -104,6 +203,25 @@ const LEAK_RATE = 0.006;         // fraction of air lost per second on a punctur
 const WEAR_END_LAPS = 40;        // tire age at which wear (grip loss) reaches its maximum
 const GRIP_LOSS_AT_END = 0.25;   // fraction of grip a fully worn tire has lost
 const AGE_STEP_LAPS = 5;         // the "+5 laps" button
+const MAX_CATCHUP_S = 1;         // physics catches up at most this much after a stall (e.g. a background tab)
+
+// Driver inputs from the buttons (and their keyboard shortcuts)
+const BRAKE_NORMAL = 0.5;        // Brake button / S: never locks healthy or 30-lap-old tires
+const BRAKE_HARD = 1.0;          // Space: stamps on the brakes, locks the fronts
+const STEER_FULL = 0.6;          // Left / Right
+
+// Tachometer (display only; the physics has no engine speed)
+const RPM_MAX = 13000, RPM_REDLINE = 11500, RPM_IDLE = 4000, RPM_LAUNCH = 10000;
+const UPSHIFT_RPM = 11800, DOWNSHIFT_RPM = 6000;
+const GEAR_TOP_KPH = [0, 100, 130, 160, 190, 220, 255, 290, 340];  // road speed at 12,000 rpm in gears 1..8
+const TACH_START_DEG = 135, TACH_SWEEP_DEG = 270;                 // 0 rpm bottom-left, clockwise to bottom-right
+
+// Car view (display only)
+const MINI_PX_PER_M = 3.5;       // how fast the road scrolls per metre travelled
+const MINI_DASH = 26, MINI_GAP = 22, MINI_KERB = 12, MINI_STRIPE = 40;  // road markings, px
+const MINI_YAW_MAX = 0.32;       // rad the car turns at full steer
+const MINI_WHEEL_MAX = 0.45;     // rad the front wheels turn at full steer
+const MINI_BEND_PX = 0.45;       // how far the road ahead bends at full steer, as a share of the box width
 
 const backendHost = new URLSearchParams(location.search).get('backend') || 'localhost:8000';
 const WS_URL = `ws://${backendHost}/ws/sim`;
@@ -138,28 +256,83 @@ function updateDemoUI() {
 }
 fitTires();
 
-// ---------- Input ----------
-const keys = new Set();
+// ---------- Input: hold-to-press driving buttons ----------
+// held: which controls are down ('throttle', 'brake', 'hard', 'left', 'right').
+// Each control counts its sources (pointers, keys) so mouse, touch and keys can overlap.
+const held = new Set();
+const sources = {};  // control -> Set of source ids
+function press(ctl, src) {
+  (sources[ctl] ??= new Set()).add(src);
+  held.add(ctl);
+  syncButton(ctl);
+}
+function release(ctl, src) {
+  sources[ctl]?.delete(src);
+  if (!sources[ctl]?.size) held.delete(ctl);
+  syncButton(ctl);
+}
+function releaseAll() {
+  for (const ctl of [...held]) { sources[ctl]?.clear(); held.delete(ctl); syncButton(ctl); }
+}
+function syncButton(ctl) {
+  const b = document.querySelector(`.drive[data-ctl="${ctl === 'hard' ? 'brake' : ctl}"]`);
+  if (!b) return;
+  const on = held.has(b.dataset.ctl) || (b.dataset.ctl === 'brake' && held.has('hard'));
+  b.classList.toggle('held', on);
+  b.setAttribute('aria-pressed', String(on));
+}
+document.querySelectorAll('.drive').forEach(b => {
+  const ctl = b.dataset.ctl;
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    try { b.setPointerCapture(e.pointerId); } catch (err) {}
+    press(ctl, `p${e.pointerId}`);
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, e => release(ctl, `p${e.pointerId}`));
+  b.addEventListener('contextmenu', e => e.preventDefault());  // long-press on touch screens
+  // Keyboard users: Space/Enter on a focused button holds it
+  b.addEventListener('keydown', e => { if ((e.key === 'Enter') && !e.repeat) press(ctl, 'focus'); });
+  b.addEventListener('keyup', e => { if (e.key === 'Enter') release(ctl, 'focus'); });
+});
+addEventListener('blur', releaseAll);  // don't leave the throttle stuck if the window loses focus
+
+// Keyboard shortcuts press the same buttons
+const KEY_CONTROLS = { w: 'throttle', arrowup: 'throttle', s: 'brake', arrowdown: 'brake', a: 'left', arrowleft: 'left',
+                       d: 'right', arrowright: 'right', ' ': 'hard' };
 addEventListener('keydown', e => {
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
   const k = e.key.toLowerCase();
-  if (k === 'escape') return stopScenario();
+  if (k === 'escape') return drawerOpen() ? setDrawer(false) : stopScenario();
+  if (e.target.closest && e.target.closest('aside select')) return;  // let the drawer's dropdowns work
+  if (KEY_CONTROLS[k]) { e.preventDefault(); if (!e.repeat) press(KEY_CONTROLS[k], `k:${k}`); return; }
   if (k === '1') return startScenario('lockup');
   if (k === '2') return startScenario('wheelspin');
   if (k === '3') return startScenario('corner');
   if (k === '4') return puncture();
   if (k === 'n') return fitTires();
   if (k === '+' || k === '=') return addTireAge(AGE_STEP_LAPS);
-  keys.add(k);
 });
-addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('keyup', e => {
+  const k = e.key.toLowerCase();
+  if (KEY_CONTROLS[k]) release(KEY_CONTROLS[k], `k:${k}`);
+});
 
-function keyboardControls() {
-  const thr = keys.has('w') || keys.has('arrowup') ? 1 : 0;
-  const brk = keys.has(' ') ? 1 : (keys.has('s') || keys.has('arrowdown') ? 0.5 : 0);
-  const str = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
-  return { throttle: thr, brake: brk, steer: str * 0.6 };
+function driverControls() {
+  const thr = held.has('throttle') ? 1 : 0;
+  const brk = held.has('hard') ? BRAKE_HARD : (held.has('brake') ? BRAKE_NORMAL : 0);
+  const str = (held.has('right') ? 1 : 0) - (held.has('left') ? 1 : 0);
+  return { throttle: thr, brake: brk, steer: str * STEER_FULL };
 }
+
+// ---------- Drawer ----------
+const drawerOpen = () => document.getElementById('drawer').classList.contains('open');
+function setDrawer(open) {
+  document.getElementById('drawer').classList.toggle('open', open);
+  document.getElementById('scrim').classList.toggle('open', open);
+  document.getElementById('drawerBtn').setAttribute('aria-expanded', String(open));
+}
+document.getElementById('drawerBtn').onclick = () => setDrawer(!drawerOpen());
+document.getElementById('drawerClose').onclick = () => setDrawer(false);
+document.getElementById('scrim').onclick = () => setDrawer(false);
 
 // ---------- Scenarios (drive the controls; physics stays the same) ----------
 let scenario = null;
@@ -170,8 +343,8 @@ const SCENARIOS = {
     controls: () => ({ throttle: 0, brake: 1, steer: 0 }),
   },
   wheelspin: {
-    label: 'Wheelspin: full throttle from 20 kph', duration: 2.5,
-    init() { car.v = 20 / 3.6; },  // rear downforce grips from ~50 kph, so start slow
+    label: 'Wheelspin: full-throttle launch from a standstill', duration: 2.5,
+    init() { car.v = 0; },  // a full launch spins the rears hard enough for a critical wheelspin
     controls: () => ({ throttle: 1, brake: 0, steer: 0 }),
   },
   corner: {
@@ -185,7 +358,7 @@ function startScenario(name) {
   car.throttle = car.brake = 0;
   s.init();
   scenario = { ...s, name, left: s.duration };
-  keys.clear();
+  releaseAll();
   updateScenarioUI();
 }
 function stopScenario() { scenario = null; updateScenarioUI(); }
@@ -206,7 +379,7 @@ const approach = (x, target, rate, dt) => x + (target - x) * Math.min(1, rate * 
 const noise = a => (Math.random() - 0.5) * 2 * a;
 
 function step(dt) {
-  let ctl = keyboardControls();
+  let ctl = driverControls();
   if (scenario) {
     ctl = scenario.controls();
     scenario.left -= dt;
@@ -330,45 +503,152 @@ setInterval(() => {
   updateDemoUI();
 }, 1000 / SEND_HZ);
 
-// ---------- Render ----------
-const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-function render() {
-  const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
-  if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#12161c'; ctx.fillRect(0, 0, w, h);
+// ---------- Tachometer (display only) ----------
+// Engine speed follows the rear wheels, so wheelspin makes the revs flare. An automatic
+// 8-speed box shifts up near the limiter and down when the revs sag.
+const tach = { rpm: RPM_IDLE, gear: 1 };
+const rpmAngle = rpm => TACH_START_DEG + (Math.min(rpm, RPM_MAX) / RPM_MAX) * TACH_SWEEP_DEG;
+const polar = (deg, radius) => [150 + radius * Math.cos(deg * Math.PI / 180), 160 + radius * Math.sin(deg * Math.PI / 180)];
 
-  // World grid, camera follows the car (1 m = 3 px)
-  const S = 3, GRID = 50;
-  ctx.save();
-  ctx.translate(w / 2, h / 2); ctx.scale(S, S); ctx.translate(-car.x, -car.y);
-  ctx.strokeStyle = '#1f252e'; ctx.lineWidth = 1 / S;
-  const x0 = Math.floor((car.x - w / S) / GRID) * GRID, y0 = Math.floor((car.y - h / S) / GRID) * GRID;
-  for (let x = x0; x < car.x + w / S; x += GRID) { ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, car.y + h / S); ctx.stroke(); }
-  for (let y = y0; y < car.y + h / S; y += GRID) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(car.x + w / S, y); ctx.stroke(); }
-
-  // Car body and tires (tire color = temperature only; no health scoring here)
-  ctx.translate(car.x, car.y); ctx.rotate(car.heading);
-  ctx.fillStyle = '#4ea1ff'; ctx.fillRect(-2.6, -0.9, 5.2, 1.8);
-  const pos = { FL: [1.8, -1.1], FR: [1.8, 1.1], RL: [-1.8, -1.1], RR: [-1.8, 1.1] };
-  for (const c of CORNERS) {
-    const hot = Math.max(0, Math.min(1, (tires[c].temp - 80) / 40));
-    ctx.fillStyle = `rgb(${60 + 195 * hot},${70 + 60 * (1 - hot)},${90 * (1 - hot)})`;
-    ctx.fillRect(pos[c][0] - 0.5, pos[c][1] - 0.3, 1, 0.6);
+function buildTach() {
+  let ticks = '';
+  for (let rpm = 0; rpm <= RPM_MAX; rpm += 500) {
+    const major = rpm % 1000 === 0, a = rpmAngle(rpm);
+    const [x1, y1] = polar(a, major ? 104 : 110), [x2, y2] = polar(a, 120);
+    ticks += `<line class="tick${major ? ' major' : ''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+    if (major) { const [tx, ty] = polar(a, 88); ticks += `<text class="num" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}">${rpm / 1000}</text>`; }
   }
+  document.getElementById('tachTicks').innerHTML = ticks;
+  const [rx1, ry1] = polar(rpmAngle(RPM_REDLINE), 115), [rx2, ry2] = polar(rpmAngle(RPM_MAX), 115);
+  document.getElementById('tachRedline').setAttribute('d', `M ${rx1.toFixed(1)} ${ry1.toFixed(1)} A 115 115 0 0 1 ${rx2.toFixed(1)} ${ry2.toFixed(1)}`);
+  let leds = '';  // shift lights across the top: 4 green, 4 red, 4 blue
+  for (let i = 0; i < 12; i++) leds += `<circle class="led" data-i="${i}" cx="${(84 + i * 12).toFixed(0)}" cy="10" r="4.5"/>`;
+  document.getElementById('tachLeds').innerHTML = leds;
+}
+
+function tachTarget() {
+  const wheelKph = (tires.RL.wheel + tires.RR.wheel) / 2 * 3.6;
+  const rpmIn = g => 12000 * wheelKph / GEAR_TOP_KPH[g];
+  let g = tach.gear;
+  while (g < 8 && rpmIn(g) > UPSHIFT_RPM) g++;
+  while (g > 1 && rpmIn(g) < DOWNSHIFT_RPM && rpmIn(g - 1) < UPSHIFT_RPM) g--;
+  tach.gear = g;
+  const clutch = g === 1 ? Math.max(0, 1 - wheelKph / 60) : 0;  // slipping clutch when pulling away
+  const launch = RPM_IDLE + car.throttle * (RPM_LAUNCH - RPM_IDLE) * clutch;
+  return Math.min(RPM_MAX, Math.max(RPM_IDLE, rpmIn(g), launch));
+}
+
+function renderTach(dt) {
+  tach.rpm = approach(tach.rpm, tachTarget(), 14, dt);
+  const rpm = tach.rpm, [nx, ny] = polar(rpmAngle(rpm), 106);
+  const needle = document.getElementById('tachNeedle');
+  needle.setAttribute('x2', nx.toFixed(1));
+  needle.setAttribute('y2', ny.toFixed(1));
+  document.getElementById('tachGear').textContent = car.v < 0.3 && car.throttle < 0.05 ? 'N' : tach.gear;
+  document.getElementById('tachSpeed').textContent = Math.round(car.v * 3.6);
+  document.getElementById('tachRpm').textContent = `${Math.round(rpm / 10) * 10} rpm`;
+  const lit = Math.round(Math.max(0, Math.min(1, (rpm - 8000) / (UPSHIFT_RPM - 8000))) * 12);
+  document.querySelectorAll('#tachLeds .led').forEach(led => {
+    const i = Number(led.dataset.i);
+    led.setAttribute('class', `led${i < lit ? (i < 4 ? ' g' : i < 8 ? ' r' : ' b') : ''}`);
+  });
+  document.getElementById('tach').classList.toggle('limiter', rpm >= RPM_REDLINE + 800);
+  document.getElementById('barThr').style.width = `${car.throttle * 100}%`;
+  document.getElementById('barBrk').style.width = `${car.brake * 100}%`;
+  const s = document.getElementById('barStr').style;
+  s.width = `${Math.abs(car.steer) / STEER_FULL * 50}%`;
+  s.transform = car.steer < 0 ? 'translateX(-100%)' : 'none';
+}
+buildTach();
+
+// ---------- Car view (display only) ----------
+// Top-down: the car sits near the bottom facing up while the road scrolls toward it at a rate
+// tied to its speed. Steering yaws the car, turns the front wheels and bends the road ahead.
+const mini = { el: document.getElementById('miniView'), scroll: 0, bend: 0 };
+mini.ctx = mini.el && mini.el.getContext ? mini.el.getContext('2d') : null;
+const phase = (y, period) => (((y - mini.scroll) % period) + period) % period;  // road markings move down
+
+function drawCar(ctx, wheelAngle, braking) {
+  const wheel = '#0c0e12', body = '#4ea1ff', dark = '#2b6cc4';
+  ctx.fillStyle = wheel;                                   // rear wheels
+  ctx.fillRect(-19, 12, 8, 16); ctx.fillRect(11, 12, 8, 16);
+  for (const x of [-15, 15]) {                             // front wheels turn with the steering
+    ctx.save(); ctx.translate(x, -17); ctx.rotate(wheelAngle); ctx.fillRect(-4, -7, 8, 14); ctx.restore();
+  }
+  ctx.fillStyle = dark;                                    // front and rear wings
+  ctx.fillRect(-17, -33, 34, 5); ctx.fillRect(-14, 27, 28, 5);
+  ctx.fillStyle = body;                                    // body: nose, sidepods, engine cover
+  ctx.beginPath();
+  [[0, -34], [3, -30], [5, -14], [11, -6], [11, 17], [7, 26], [-7, 26], [-11, 17], [-11, -6], [-5, -14], [-3, -30]]
+    .forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = dark; ctx.fillRect(-1.5, -26, 3, 48);    // centre stripe
+  ctx.fillStyle = '#0b0e13';                               // cockpit and halo
+  ctx.beginPath(); ctx.ellipse(0, -3, 4, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#0b0e13'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, -3, 6, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+  // Rear lights: dim when rolling, bright red with a glow when braking
+  ctx.save();
+  ctx.fillStyle = braking ? '#ff2a2a' : '#5b1d1d';
+  if (braking) { ctx.shadowColor = '#ff2a2a'; ctx.shadowBlur = 18; }
+  ctx.fillRect(-5, 32, 10, 4.5); ctx.fillRect(-15, 32, 6, 3.5); ctx.fillRect(9, 32, 6, 3.5);
   ctx.restore();
-
-  document.getElementById('hudSpeed').textContent = Math.round(car.v * 3.6);
 }
 
-let last = performance.now(), acc = 0;
-function loop(now) {
-  acc += Math.min(0.25, (now - last) / 1000); last = now;
+function renderMini(dt) {
+  const { el, ctx } = mini;
+  if (!ctx) return;
+  const dpr = devicePixelRatio || 1, w = el.clientWidth, h = el.clientHeight;
+  if (!w || !h) return;
+  if (el.width !== Math.round(w * dpr) || el.height !== Math.round(h * dpr)) { el.width = Math.round(w * dpr); el.height = Math.round(h * dpr); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const rolling = Math.min(1, car.v / 8);                  // turning only shows once the car is moving
+  const steer = car.steer / STEER_FULL;                    // -1 left .. 1 right, as applied
+  mini.scroll = (mini.scroll + car.v * dt * MINI_PX_PER_M) % 1e6;
+  mini.bend = approach(mini.bend, steer * rolling, 3, dt);
+  const cx = w / 2, carY = h * 0.72, roadW = Math.min(110, w * 0.5);
+  const centreAt = y => y >= carY ? cx : cx + mini.bend * w * MINI_BEND_PX * ((carY - y) / carY) ** 2;
+
+  ctx.fillStyle = '#1b3a23'; ctx.fillRect(0, 0, w, h);     // grass, with stripes that move with the car
+  ctx.fillStyle = '#21452a';
+  for (let y = -MINI_STRIPE; y < h; y += 2) if (phase(y, MINI_STRIPE) < 2) ctx.fillRect(0, y, w, MINI_STRIPE / 2);
+
+  const ROW = 2;                                           // road drawn in thin rows so it can bend
+  for (let y = 0; y < h; y += ROW) {
+    const x = centreAt(y);
+    ctx.fillStyle = '#2b2f36'; ctx.fillRect(x - roadW / 2, y, roadW, ROW + 0.5);
+    ctx.fillStyle = Math.floor(phase(y, MINI_KERB * 2) / MINI_KERB) ? '#e8e8e8' : '#d33a3a';
+    ctx.fillRect(x - roadW / 2 - 5, y, 5, ROW + 0.5); ctx.fillRect(x + roadW / 2, y, 5, ROW + 0.5);
+    if (phase(y, MINI_DASH + MINI_GAP) < MINI_DASH) { ctx.fillStyle = '#d8dde5'; ctx.fillRect(x - 1.5, y, 3, ROW + 0.5); }
+  }
+
+  ctx.save();
+  ctx.translate(cx, carY);
+  ctx.rotate(steer * MINI_YAW_MAX * rolling);
+  drawCar(ctx, steer * MINI_WHEEL_MAX, car.brake > 0.05);
+  ctx.restore();
+}
+
+// ---------- Loops ----------
+// Physics on a timer, catching up on real time (up to MAX_CATCHUP_S) if the tab was throttled.
+let lastPhys = performance.now(), acc = 0;
+setInterval(() => {
+  const now = performance.now();
+  acc += Math.min(MAX_CATCHUP_S, (now - lastPhys) / 1000);
+  lastPhys = now;
   while (acc >= PHYS_DT) { step(PHYS_DT); acc -= PHYS_DT; }
-  render();
-  requestAnimationFrame(loop);
+}, 1000 * PHYS_DT);
+
+// Drawing on animation frames (visual only)
+let lastDraw = performance.now();
+function draw(now) {
+  const dt = Math.min(0.1, (now - lastDraw) / 1000);
+  renderTach(dt);
+  renderMini(dt);
+  lastDraw = now;
+  requestAnimationFrame(draw);
 }
-requestAnimationFrame(loop);
+requestAnimationFrame(draw);
 </script>
 </body>
 </html>
