@@ -47,7 +47,6 @@
 </header>
 <main class="atlas">
   <div class="hero" id="hero"></div>
-  <div class="callout" id="qatar"></div>
   <div class="two">
     <div class="panel">
       <h3>Data-driven stint cap per circuit <span class="badges"><span class="badge ollon">Kaplan–Meier</span></span></h3>
@@ -199,10 +198,6 @@ function chart(canvas, series, { xs, ymax, xlabel, hline, log } = {}) {
   const s = a.summary;
   $("hero").innerHTML = [["Races", s.races], ["Stints analysed", s.stints.toLocaleString()], ["Performance cliffs found", s.cliffs], ["Tyre failures labelled", `${s.failures}`]]
     .map(([k, v]) => `<div class="panel stat"><div class="muted" style="font-size:12px">${k}</div><div class="v">${v}</div></div>`).join("");
-  const q = a.qatar;
-  $("qatar").innerHTML = q && q.model_cap_10pct != null
-    ? `<b>Qatar check.</b> After sidewall failures in 2023 the FIA imposed an emergency <b>${q.fia_cap_2023}-lap</b> maximum per set (${q.fia_cap_2025} in 2025). From lap-time data alone, Lightning Response's data-driven cap for ${q.circuit} is <b>${q.model_cap_10pct} laps</b>, and the same method produces a cap for <b>every</b> circuit before anything goes wrong.`
-    : `<b>A data-driven "Qatar rule" for every circuit.</b> After sidewall failures at Qatar 2023 the FIA imposed an emergency 18-lap maximum per set. Lightning Response derives the equivalent cap for every circuit from lap-time data, before anything goes wrong. Seasons in the atlas: ${s.seasons.join(", ")}.`;
   const maxCap = Math.max(...a.circuits.map((c) => c.stint_cap_10pct || 0));
   $("circ").innerHTML = `<tr><th>Circuit</th><th>Cap</th><th></th><th>Cliff rate</th><th>Deg s/lap</th><th>Stints</th></tr>` +
     a.circuits.map((c, i) => `<tr data-i="${i}"><td>${c.circuit}</td><td class="num">${c.stint_cap_10pct ?? "–"}</td>
