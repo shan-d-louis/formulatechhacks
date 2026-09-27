@@ -362,9 +362,12 @@ async def ws_driver(ws: WebSocket):
     try:
         while True:
             msg = await ws.receive_json()
-            if LIVE is None:
-                continue
             kind = msg.get("type")
+            if LIVE is None:
+                if kind == "scenario":             # say why nothing happens instead of leaving the phone waiting
+                    await ws.send_json({"type": "scenario_error",
+                                        "text": "The live car isn't running: open the pit wall in 'Drive it yourself' first."})
+                continue
             if kind == "claim":
                 LIVE.claim()
                 await hub.send("pitwall", {"type": "notice", "text": "A driver has taken the wheel."})
@@ -376,6 +379,14 @@ async def ws_driver(ws: WebSocket):
             elif kind == "box":
                 LIVE.pit_stop()
                 await hub.send("pitwall", {"type": "new_tyres", "by": "driver"})
+            elif kind == "scenario":
+                try:
+                    label = LIVE.start_scenario(str(msg.get("key", "")))
+                    await hub.send("pitwall", {"type": "notice", "text": f"Scenario started from the phone: {label}."})
+                except (KeyError, ValueError, OSError) as e:
+                    await ws.send_json({"type": "scenario_error", "text": f"Scenario not available: {e}"})
+            elif kind == "scenario_stop":
+                LIVE.stop_scenario()
     except WebSocketDisconnect:
         hub.leave("driver", ws)
         await _presence()
