@@ -26,40 +26,46 @@ class SlipResult:
     slip: float  # |slip| this frame
     peak: float  # peak |slip| of the event so far (or at its end)
     duration_s: float  # time the condition has held (or held in total, at the end)
-    severity: str  # "warn" | "bad", from peak
+    severity: str  # "warn" | "bad" from the peak; "critical" once held above the bad level long enough
 
 
 def kph_to_mps(kph: float) -> float:
     return kph / 3.6
 
 
-def _severity(peak: float, bad_threshold: float) -> str:
+def _severity(peak: float, bad_threshold: float, held_bad_s: float = 0.0, crit_hold_s: float = float("inf")) -> str:
+    if held_bad_s + _EPS >= crit_hold_s:
+        return "critical"
     return "bad" if peak > bad_threshold else "warn"
 
 
 def _step_event(ev: SlipEvent, condition: bool, magnitude: float, t: float, dt: float,
-                hold_s: float, bad_threshold: float) -> SlipResult:
+                hold_s: float, bad_threshold: float, crit_hold_s: float) -> SlipResult:
     """Advance one slip event by a frame. Shared by lock-up and wheelspin."""
     if condition:
         if ev.held_s == 0.0:
             ev.start_t = t
             ev.peak = 0.0
+            ev.held_bad_s = 0.0
         ev.held_s += dt
         ev.peak = max(ev.peak, magnitude)
+        if magnitude > bad_threshold:
+            ev.held_bad_s += dt
+        severity = _severity(ev.peak, bad_threshold, ev.held_bad_s, crit_hold_s)
         if not ev.active:
             if ev.held_s + _EPS < hold_s:
-                return SlipResult(HOLDING, magnitude, ev.peak, ev.held_s, _severity(ev.peak, bad_threshold))
+                return SlipResult(HOLDING, magnitude, ev.peak, ev.held_s, severity)
             ev.active = True
             phase = STARTED
         else:
             phase = ACTIVE
-        return SlipResult(phase, magnitude, ev.peak, ev.held_s, _severity(ev.peak, bad_threshold))
+        return SlipResult(phase, magnitude, ev.peak, ev.held_s, severity)
 
     # Condition not met: end an active event, or drop a short blip that never qualified
     was_active = ev.active
     result = SlipResult(ENDED if was_active else IDLE, magnitude, ev.peak, ev.held_s,
-                        _severity(ev.peak, bad_threshold))
-    ev.held_s, ev.active, ev.peak, ev.start_t = 0.0, False, 0.0, None  # alert_id is cleared by alerts.py
+                        _severity(ev.peak, bad_threshold, ev.held_bad_s, crit_hold_s))
+    ev.held_s, ev.active, ev.peak, ev.start_t, ev.held_bad_s = 0.0, False, 0.0, None, 0.0  # alert_id: alerts.py
     return result
 
 
@@ -68,7 +74,8 @@ def detect_lockup(st: TireState, slip: float, brake: float, speed_kph: float, t:
     """Front lock-up: slip < LOCKUP_SLIP with the brake on, above a minimum speed."""
     condition = (slip < config.LOCKUP_SLIP and brake > config.LOCKUP_MIN_BRAKE
                  and speed_kph > config.LOCKUP_MIN_SPEED_KPH)
-    r = _step_event(st.lockup, condition, abs(slip), t, dt, config.LOCKUP_HOLD_S, config.LOCKUP_BAD_SLIP)
+    r = _step_event(st.lockup, condition, abs(slip), t, dt, config.LOCKUP_HOLD_S, config.LOCKUP_BAD_SLIP,
+                    config.LOCKUP_CRIT_HOLD_S)
     if r.phase in (STARTED, ACTIVE):
         st.damage_penalty += abs(slip) * kph_to_mps(speed_kph) * dt * config.LOCKUP_DAMAGE_K
     return r
@@ -79,7 +86,7 @@ def detect_wheelspin(st: TireState, slip: float, throttle: float, speed_kph: flo
     """Rear wheelspin: slip > WHEELSPIN_SLIP with the throttle on."""
     condition = slip > config.WHEELSPIN_SLIP and throttle > config.WHEELSPIN_MIN_THROTTLE
     r = _step_event(st.wheelspin, condition, max(slip, 0.0), t, dt, config.WHEELSPIN_HOLD_S,
-                    config.WHEELSPIN_BAD_SLIP)
+                    config.WHEELSPIN_BAD_SLIP, config.WHEELSPIN_CRIT_HOLD_S)
     if r.phase in (STARTED, ACTIVE):
         st.damage_penalty += slip * kph_to_mps(speed_kph) * dt * config.WHEELSPIN_DAMAGE_K
     return r

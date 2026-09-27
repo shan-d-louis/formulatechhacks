@@ -63,7 +63,8 @@ def test_stint_id_change_resets_every_tire_state():
     for c, tire in out["tires"].items():  # scored as a 20-lap-old set, not as the damaged one
         assert tire["thi"] > 30 and tire["status"] != "bad" and tire["dominant"] == "wear", c
     assert out["alerts"][0] == {"severity": "info", "tire": "ALL", "lap": 2, "t": round(t, 1),
-                                "message": "New stint: used MEDIUM tires, 20 laps old.", "pinned": False}
+                                "message": "New stint: used MEDIUM tires, 20 laps old.", "pinned": False,
+                                "kind": "stint"}
     assert main.alert_log.get(lockup_alert)["active"] is False  # the cut-short lock-up was closed
     assert out["stint"] == {"id": 2, "compound": "MEDIUM", "tire_age_laps": 20.0, "demo_speed": 1}
 

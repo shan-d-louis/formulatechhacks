@@ -42,7 +42,8 @@ RAW = {
 
 def test_process_shape():
     out = main.process(RAW)
-    assert set(out) == {"timestamp", "lap", "car", "laps_remaining", "stint", "tires", "alerts"}
+    assert set(out) == {"timestamp", "lap", "car", "laps_remaining", "danger", "stint", "tires", "alerts"}
+    assert set(out["danger"]) == {"low", "mid", "high", "tire", "now", "thi_below"}
     assert out["stint"] == {"id": 1, "compound": "MEDIUM", "tire_age_laps": 1.4, "demo_speed": 1}
     assert set(out["tires"]) == {"FL", "FR", "RL", "RR"}
     fl = out["tires"]["FL"]

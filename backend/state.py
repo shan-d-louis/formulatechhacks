@@ -12,6 +12,7 @@ class SlipEvent:
     held_s: float = 0.0  # how long the condition has held continuously
     active: bool = False  # True once held_s passed the hold time
     peak: float = 0.0  # peak |slip| during the current event
+    held_bad_s: float = 0.0  # time |slip| spent above the "bad" level in the current event
     start_t: float | None = None  # frame time the event became active
     alert_id: int | None = None  # alert created for this event, updated in place
 
@@ -46,6 +47,8 @@ class TireState:
     thermal_score: float = float(config.COMPONENT_MAX)
     pressure_score: float = float(config.COMPONENT_MAX)
     status: str = "ok"  # "ok" | "warn" | "bad", with hysteresis
+    residual: float = 0.0  # latest pressure residual, psi (air lost, temperature-compensated)
+    capped: bool = False  # latest frame had a critical cap
 
     def reset(self) -> None:
         """Forget everything: a fresh set of tires was fitted."""

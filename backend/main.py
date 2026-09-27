@@ -34,6 +34,7 @@ def reset_tires() -> None:
         for alert_id in (st.lockup.alert_id, st.wheelspin.alert_id, st.overheat_alert_id, st.pressure_alert_id):
             alert_log.finalize(alert_id)  # close (and unpin) anything cut short by the tire change
         st.reset()
+    alert_log.close_all()  # nothing on the old set is active any more
     alert_log.clear_groups()
     _last_stint = None
     log.info("new tires: tire state reset")
@@ -73,9 +74,10 @@ def process(raw: dict) -> dict:
     _last_stint = {"t": raw["t"], "compound": raw["compound"], "tire_age_laps": raw["tire_age_laps"],
                    "stint_id": raw.get("stint_id")}
 
+    alert_log.expire(raw["t"])
     laps_remaining = laps.predict_laps(raw["compound"], raw["tire_age_laps"], raw["track_temp_c"])
 
-    tires_out = {}
+    tires_out, dangers = {}, {}
     for corner in config.CORNERS:
         t = raw["tires"][corner]
         st = tire_states[corner]
@@ -98,6 +100,7 @@ def process(raw: dict) -> dict:
 
         thi = health.tire_health(st, t["temp_c"], t["pressure_psi"], f["pressure_residual"],
                                  raw["tire_age_laps"], laps_remaining["mid"])
+        dangers[corner] = health.danger_band(st, raw["tire_age_laps"], laps_remaining)
         tires_out[corner] = {
             **thi,
             "temp_c": _r1(t["temp_c"]),
@@ -106,7 +109,10 @@ def process(raw: dict) -> dict:
             "slip_ratio": round(f["slip_ratio"], 3),
             "flags": {"lockup": st.lockup.active, "wheelspin": st.wheelspin.active,
                       "overheat": st.overheat, "pressure": st.pressure},
+            "laps_to_danger": dangers[corner]["mid"],
         }
+
+    worst = min(config.CORNERS, key=lambda c: (dangers[c]["mid"], dangers[c]["low"]))
 
     return {
         "timestamp": _r1(raw["t"]),
@@ -118,6 +124,8 @@ def process(raw: dict) -> dict:
             "steer": round(float(raw["steer"]), 2),
         },
         "laps_remaining": laps_remaining,
+        "danger": {**dangers[worst], "tire": worst, "now": dangers[worst]["mid"] == 0,
+                   "thi_below": config.DANGER_THI},
         "stint": {
             "id": raw.get("stint_id"),
             "compound": raw["compound"],

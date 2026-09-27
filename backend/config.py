@@ -25,6 +25,7 @@ LOCKUP_MIN_BRAKE = 0.15  # brake input must exceed this
 LOCKUP_MIN_SPEED_KPH = 18.0  # ignore lock-ups below this speed
 LOCKUP_HOLD_S = 0.1  # condition must hold this long before alerting
 LOCKUP_BAD_SLIP = 0.4  # peak |slip| above this → severity "bad", else "warn"
+LOCKUP_CRIT_HOLD_S = 1.0  # |slip| above LOCKUP_BAD_SLIP for this long in one lock-up → "critical" (flat-spot risk)
 LOCKUP_DAMAGE_K = 0.25  # damage per frame while active: |slip| * speed_mps * dt * K
 
 # ---------- Wheelspin (rear tires) ----------
@@ -32,6 +33,8 @@ WHEELSPIN_SLIP = 0.15  # slip above this counts as spinning
 WHEELSPIN_MIN_THROTTLE = 0.2  # throttle input must exceed this
 WHEELSPIN_HOLD_S = 0.1  # condition must hold this long before alerting
 WHEELSPIN_BAD_SLIP = 0.4  # peak slip above this → severity "bad", else "warn"
+WHEELSPIN_CRIT_HOLD_S = 0.5  # slip above WHEELSPIN_BAD_SLIP for this long in one spin → "critical"
+SLIP_CRIT_PIN_S = 30.0  # a critical lock-up / wheelspin stays pinned this long after it ends (the harm outlasts the slide)
 WHEELSPIN_DAMAGE_K = 0.12  # damage per frame while active: slip * speed_mps * dt * K
 
 # ---------- Overheating ----------
@@ -69,6 +72,7 @@ STATUS_WARN_ENTER = 78  # THI below this → enter "warn"
 STATUS_WARN_EXIT = 82  # THI above this → back to "ok"
 STATUS_BAD_ENTER = 48  # THI below this → enter "bad"
 STATUS_BAD_EXIT = 52  # THI above this → leave "bad"
+DANGER_THI = STATUS_BAD_ENTER  # danger zone: THI below this (the red "bad" band); laps-to-danger counts to it
 
 # ---------- Laps remaining (laps.py / training) ----------
 FUEL_S_PER_KG = 0.03  # lap-time gain per kg of fuel burned, s

@@ -164,10 +164,10 @@ SCENARIOS: dict[str, tuple[str, list[Phase]]] = {
               lambda s: _scenario_start(s, 290)),
         Phase("Pull away again", 8, hold_speed(200)),
     ]),
-    "2": ("Full throttle from low speed -> rear wheelspin", [
+    "2": ("Full-throttle launch -> rear wheelspin", [
         CRUISE,
-        Phase("Full throttle from 20 kph", 2.5, lambda s: {"throttle": 1, "brake": 0, "steer": 0},
-              lambda s: _scenario_start(s, 20, at_least=False)),
+        Phase("Full-throttle launch from a standstill", 2.5, lambda s: {"throttle": 1, "brake": 0, "steer": 0},
+              lambda s: _scenario_start(s, 0, at_least=False)),
         Phase("Cruise", 8, hold_speed(200)),
     ]),
     "3": ("Sustained cornering at speed -> outside tires overheat", [
@@ -261,7 +261,9 @@ def run(key: str, seed: int = 0, quiet: bool = False, tire_age: float = 0.0) -> 
         st = out["stint"]
         say(f"  at t={out['timestamp']:.1f}s, {out['car']['speed_kph']:.0f} kph, stint {st['id']} {st['compound']} "
             f"{st['tire_age_laps']} laps old (aging {st['demo_speed']}x), grip {sim.grip():.0%}, "
-            f"laps left {out['laps_remaining']['mid']} ({out['laps_remaining']['low']}-{out['laps_remaining']['high']}):")
+            f"laps left {out['laps_remaining']['mid']} ({out['laps_remaining']['low']}-{out['laps_remaining']['high']}), "
+            + ("DANGER ZONE NOW: " + out["danger"]["tire"] if out["danger"]["now"]
+               else f"laps to danger {out['danger']['mid']} ({out['danger']['low']}-{out['danger']['high']}), worst {out['danger']['tire']}") + ":")
         for c in CORNERS:
             say(_tire_line(c, raw["tires"][c], out["tires"][c]))
 
