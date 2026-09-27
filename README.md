@@ -18,6 +18,9 @@ SIDEWALL watches every tyre in real time. It detects lock-ups, wheelspin, overhe
 | **Ollon: data-driven** | 2018–2025 FastF1 data (thousands of stints) turned into a tyre-safety dataset, and a **data-driven stint cap for every circuit** (Kaplan–Meier), i.e. a "Qatar rule" everywhere before anything breaks. |
 | **Ampere: AI** | Early-warning event detectors trained on sim ground truth and run on real F1 telemetry, a virtual TPMS, and survival models with conformal calibration. |
 
+- [Product Overview](./How%20SIDEWALL%20works.pdf)
+- [Product Improvements](./SIDEWALL%20clearer%20pit%20wall%20concept.pdf)
+
 ## Models (all trained on existing public datasets)
 | Model | Data | Held-out result |
 |---|---|---|
@@ -326,6 +329,9 @@ If not installed, run the following scripts from the root of this repository:
 uv run python -m sidewall.data.ingest_fastf1 --years 2020 2021 --telemetry
 uv run python -m sidewall.data.build_stints
 ```
+
+### Feedback Loop
+Check [feedback.py](./sidewall/server/feedback.py).
 
 Tests:
 
