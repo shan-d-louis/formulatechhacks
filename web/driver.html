@@ -3,8 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0a0c10">
+<meta name="theme-color" content="#0b0e14">
 <title>SIDEWALL Driver</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap">
 <link rel="stylesheet" href="/static/app.css">
 <style>
   html, body { height: 100%; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
@@ -19,16 +22,22 @@
   .adv { font-size: 13px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lapt { font-family: var(--mono); text-align: right; font-size: 13px; color: var(--muted); }
   .lapt b { color: var(--text); font-size: 18px; }
-  .pedals { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; min-height: 0; }
-  .pedal { position: relative; border-radius: 22px; border: 2px solid #2a303b; overflow: hidden; display: flex;
-    align-items: flex-end; justify-content: center; padding-bottom: 18px; background: #11151c; }
+  /* Speedometer slot: takes the free space above the pedals. Drop the asset in as <img> (or <svg>) inside #speedo. */
+  .speedo { flex: 1; min-height: 80px; margin: 10px 12px 0; border-radius: 16px; border: 2px dashed var(--line);
+    background: var(--panel); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .speedo:has(img, svg, canvas) { border-style: solid; }
+  .speedo img, .speedo svg, .speedo canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .speedo .ph { color: var(--faint); font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  .pedals { flex: 0 0 auto; height: clamp(110px, 36vh, 240px); display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; }
+  .pedal { position: relative; border-radius: 22px; border: 2px solid #1e293b; overflow: hidden; display: flex;
+    align-items: flex-end; justify-content: center; padding-bottom: 10px; background: #121824; }
   .pedal .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; opacity: .9; }
-  .pedal .lbl { position: relative; font-weight: 900; letter-spacing: .14em; font-size: 18px; text-align: center; }
-  .pedal .lbl small { display: block; font-size: 30px; font-family: var(--mono); letter-spacing: 0; }
-  #brake .fill { background: linear-gradient(0deg, #ff3040, #ff7a1a); }
+  .pedal .lbl { position: relative; font-weight: 900; letter-spacing: .14em; font-size: 14px; text-align: center; }
+  .pedal .lbl small { display: block; font-size: 22px; font-family: var(--mono); letter-spacing: 0; }
+  #brake .fill { background: linear-gradient(0deg, #ff2a4b, #ff7a1a); }
   #throttle .fill { background: linear-gradient(0deg, #13a85a, #2fd27a); }
   .pedal.active { border-color: #fff; }
-  .gate { position: fixed; inset: 0; background: rgba(10, 12, 16, .96); display: flex; flex-direction: column; align-items: center;
+  .gate { position: fixed; inset: 0; background: rgba(11, 14, 20, .96); display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 16px; padding: 24px; text-align: center; z-index: 5; }
   .gate h1 { margin: 0; font-size: 26px; }
   .gate p { margin: 0; color: var(--muted); max-width: 440px; }
@@ -36,7 +45,7 @@
   .rot { font-size: 13px; color: var(--advise); }
   .release { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 3; font-size: 12px; opacity: .85; }
   .shake { animation: shake .18s; } @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
-  .flash-lock { box-shadow: inset 0 0 0 6px #ff3040; } .flash-spin { box-shadow: inset 0 0 0 6px #2fd27a; }
+  .flash-lock { box-shadow: inset 0 0 0 6px #ff2a4b; } .flash-spin { box-shadow: inset 0 0 0 6px #2fd27a; }
 </style>
 </head>
 <body>
@@ -45,6 +54,7 @@
     <div class="mid"><span class="call" id="call">–</span><div class="adv" id="adv">Steering is automatic: you control the pedals.</div></div>
     <div class="lapt">lap <span id="lap">–</span><br><b id="lapt">–</b></div>
   </div>
+  <div class="speedo" id="speedo" aria-label="Speedometer"><span class="ph">Speedometer</span></div>
   <div class="pedals">
     <div class="pedal" id="brake"><div class="fill"></div><div class="lbl">BRAKE<small id="brkv">0%</small></div></div>
     <div class="pedal" id="throttle"><div class="fill"></div><div class="lbl">THROTTLE<small id="thrv">0%</small></div></div>
@@ -60,7 +70,7 @@
   </div>
 <script>
 const $ = (id) => document.getElementById(id);
-const LEVEL_COLOR = ["#2fd27a", "#ffc233", "#ff7a1a", "#ff3040"];
+const LEVEL_COLOR = ["#2fd27a", "#ffc233", "#ff7a1a", "#ff2a4b"];
 const state = { throttle: 0, brake: 0 };
 let ws, seq = 0, driving = false, wake = null, lastSent = "";
 

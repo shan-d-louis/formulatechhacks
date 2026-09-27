@@ -4,10 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SIDEWALL Tyre Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap">
 <link rel="stylesheet" href="/static/app.css">
 <style>
   main.atlas { max-width: 1280px; margin: 0 auto; padding: 16px 18px 40px; display: grid; gap: 14px; }
-  .hero { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  main.atlas .hero { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; max-width: none; margin: 0; padding: 0; }
   @media (max-width: 800px) { .hero { grid-template-columns: 1fr 1fr; } main.atlas { padding: 12px; } }
   .stat .v { font-size: 30px; font-family: var(--mono); font-weight: 800; }
   .two { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; }
@@ -17,7 +20,7 @@
   th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
   td.num { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
   tr:hover td { background: var(--panel-2); cursor: pointer; }
-  tr.sel td { background: rgba(51, 182, 255, .12); }
+  tr.sel td { background: rgba(0, 229, 255, .12); }
   .capbar { height: 8px; border-radius: 4px; background: var(--accent); }
   canvas { width: 100%; height: 260px; display: block; }
   .callout { border-left: 3px solid var(--t1); padding: 10px 14px; background: var(--panel-2); border-radius: 8px; font-size: 14px; line-height: 1.5; }
@@ -28,12 +31,18 @@
 </style>
 </head>
 <body>
-<header class="top">
-  <div class="brand"><b>SIDEWALL</b><span>Tyre Safety Atlas</span></div>
-  <span class="badge ollon">Ollon · Data-driven motorsport safety</span>
-  <span class="badge ampere">Ampere · AI</span>
-  <span class="badge t1">Track 1 · Safety Diagnosis</span>
-  <div class="controls"><a class="btn" href="/" style="text-decoration:none">← Pit wall</a></div>
+<header class="topbar">
+  <a class="brand" href="/"><b>SIDEWALL</b><span>Tyre Safety Atlas</span></a>
+  <nav class="tabs">
+    <a href="/pitwall?mode=replay">Replay a real race</a>
+    <a href="/pitwall?mode=live">Drive it yourself</a>
+    <a class="active" href="/atlas">Explore the data</a>
+  </nav>
+  <div class="right">
+    <span class="badge ollon">Ollon · Data-driven motorsport safety</span>
+    <span class="badge ampere">Ampere · AI</span>
+    <span class="badge t1">Track 1 · Safety Diagnosis</span>
+  </div>
 </header>
 <main class="atlas">
   <div class="hero" id="hero"></div>
@@ -66,7 +75,7 @@
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
-const COLORS = ["#ff3040", "#ffc233", "#e8ebf0", "#33b6ff", "#b07cff"];
+const COLORS = ["#ff2a4b", "#ffc233", "#f8fafc", "#00e5ff", "#b07cff"];
 
 function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
   const r = canvas.getBoundingClientRect(); const dpr = devicePixelRatio;
@@ -75,14 +84,14 @@ function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
   c.clearRect(0, 0, W, H);
   const n = Math.max(...series.map((s) => s.values.length));
   ymax = ymax ?? Math.max(...series.flatMap((s) => s.values.filter((v) => v != null))) * 1.1;
-  c.font = `${10 * dpr}px system-ui`; c.fillStyle = "#8b93a1"; c.strokeStyle = "#262b34";
+  c.font = `${10 * dpr}px system-ui`; c.fillStyle = "#94a3b8"; c.strokeStyle = "#1e293b";
   for (let g = 0; g <= 4; g++) {
     const y = T + (H - T - B) * g / 4; c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke();
     c.fillText((ymax * (1 - g / 4)).toFixed(ymax < 1 ? 2 : ymax < 10 ? 1 : 0), 2 * dpr, y + 3 * dpr);
   }
   const X = (i) => L + (W - L - R) * i / Math.max(1, n - 1), Y = (v) => T + (H - T - B) * (1 - v / ymax);
   if (xs) for (let i = 0; i < n; i += Math.ceil(n / 8)) c.fillText(xs[i], X(i) - 6 * dpr, H - 6 * dpr);
-  if (hline != null) { c.strokeStyle = "#ff3040"; c.setLineDash([5, 4]); c.beginPath(); c.moveTo(L, Y(hline)); c.lineTo(W - R, Y(hline)); c.stroke(); c.setLineDash([]); }
+  if (hline != null) { c.strokeStyle = "#ff2a4b"; c.setLineDash([5, 4]); c.beginPath(); c.moveTo(L, Y(hline)); c.lineTo(W - R, Y(hline)); c.stroke(); c.setLineDash([]); }
   series.forEach((s, k) => {
     c.strokeStyle = s.color || COLORS[k]; c.fillStyle = s.color || COLORS[k]; c.lineWidth = 2 * dpr;
     if (s.bars) {
@@ -95,7 +104,7 @@ function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
     }
   });
   let lx = L; series.forEach((s, k) => { c.fillStyle = s.color || COLORS[k]; c.fillText(s.label, lx, 12 * dpr); lx += c.measureText(s.label).width + 14 * dpr; });
-  if (xlabel) { c.fillStyle = "#8b93a1"; c.fillText(xlabel, W - R - c.measureText(xlabel).width, H - 6 * dpr); }
+  if (xlabel) { c.fillStyle = "#94a3b8"; c.fillText(xlabel, W - R - c.measureText(xlabel).width, H - 6 * dpr); }
 }
 
 (async () => {
@@ -116,13 +125,13 @@ function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
   const pick = (i) => {
     document.querySelectorAll("#circ tr").forEach((tr) => tr.classList.toggle("sel", tr.dataset.i == i));
     const c = a.circuits[i]; $("survname").textContent = c.circuit;
-    chart($("surv"), [{ label: `${c.circuit}: P(no cliff yet)`, values: c.survival, color: "#33b6ff" }],
+    chart($("surv"), [{ label: `${c.circuit}: P(no cliff yet)`, values: c.survival, color: "#00e5ff" }],
       { xs: c.survival.map((_, k) => k), ymax: 1, xlabel: "tyre age (laps)", hline: 0.9 });
   };
   $("circ").onclick = (e) => { const tr = e.target.closest("tr[data-i]"); if (tr) pick(tr.dataset.i); };
   pick(0);
   const fr = a.failure_rate_per_1000_laps_by_age;
-  chart($("fail"), [{ label: "failures / 1,000 laps", values: fr.rate, bars: true, color: "#ff3040" }],
+  chart($("fail"), [{ label: "failures / 1,000 laps", values: fr.rate, bars: true, color: "#ff2a4b" }],
     { xs: fr.bins.slice(0, -1).map((b) => `${b}-${b + 4}`), xlabel: "tyre age (laps)" });
   const years = Object.keys(a.deg_by_year);
   const comps = ["softest", "middle", "hardest"];

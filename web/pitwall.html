@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SIDEWALL Pit Wall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -73,10 +76,9 @@
         <h3><span class="help" title="Laps this set of tyres can still do before the performance cliff, at 90% confidence (calibrated on held-out races).">Tyre life</span>
           <span class="right"><span class="badge ampere">survival model</span></span></h3>
         <div class="life">
-          <div class="kv"><div class="k">Safe laps left (90%)</div><div class="big" id="safeLaps">–</div></div>
-          <div class="kv"><div class="k">Likely laps to the cliff</div><div class="big" id="medianLaps">–</div></div>
+          <div class="kv safe"><div class="k">Safe laps left</div><div class="big" id="safeLaps">–</div><div class="sub">90% confidence</div></div>
+          <div class="kv cliff"><div class="k">Likely laps to the cliff</div><div class="big" id="medianLaps">–</div><div class="sub">median estimate</div></div>
         </div>
-        <canvas class="chart" id="lifeChart"></canvas>
       </div>
     </div>
 
@@ -85,7 +87,7 @@
       <div class="panel">
         <h3>Track <span class="right"><span class="badge ollon" id="mapSource">FastF1 position</span></span></h3>
         <canvas id="map" class="map"></canvas>
-        <div class="legend"><span><i style="background:#ff3040"></i>lock-up</span><span><i style="background:#2fd27a"></i>wheelspin</span><span><i style="background:#ffc233"></i>pit call raised</span></div>
+        <div class="legend"><span><i style="background:#ff2a4b"></i>lock-up</span><span><i style="background:#2fd27a"></i>wheelspin</span><span><i style="background:#ffc233"></i>pit call raised</span></div>
         <div class="kvs">
           <div class="kv"><div class="k">Speed</div><div class="v"><span id="speed">–</span><span class="muted" style="font-size:12px"> km/h</span></div></div>
           <div class="kv"><div class="k">Gear</div><div class="v" id="gear">–</div></div>

@@ -6,9 +6,9 @@ const $ = (id) => document.getElementById(id);
 const WHEELS = ["fl", "fr", "rl", "rr"];
 const WNAME = { fl: "FRONT LEFT", fr: "FRONT RIGHT", rl: "REAR LEFT", rr: "REAR RIGHT" };
 const LEVEL = ["OK", "MANAGE", "BOX THIS LAP", "BOX NOW"];
-const LEVEL_COLOR = ["#2fd27a", "#ffc233", "#ff7a1a", "#ff3040"];
-const FACTOR_COLOR = { "Braking": "#ff3040", "Throttle": "#2fd27a", "Speed & cornering": "#3ab8ff",
-  "Engine & gearing": "#8e97a8", "Tyre heat history": "#ff7a1a", "Tyre temperature": "#ffc233", "Tyre pressure": "#b07cff" };
+const LEVEL_COLOR = ["#2fd27a", "#ffc233", "#ff7a1a", "#ff2a4b"];
+const FACTOR_COLOR = { "Braking": "#ff2a4b", "Throttle": "#2fd27a", "Speed & cornering": "#00e5ff",
+  "Engine & gearing": "#94a3b8", "Tyre heat history": "#ff7a1a", "Tyre temperature": "#ffc233", "Tyre pressure": "#b07cff" };
 const WINDOW = [85, 115];
 
 const params = new URLSearchParams(location.search);
@@ -21,13 +21,13 @@ let ws = null, pins = [];
 // ---------------------------------------------------------------- helpers
 const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const pct = (p) => p == null ? "–" : `${p < 0.1 && p > 0 ? (100 * p).toFixed(1) : Math.round(100 * p)}%`;
-function tempColor(t) { return t < 70 ? "#3a8dff" : t < WINDOW[0] ? "#7ab4ff" : t <= WINDOW[1] ? "#2fd27a" : t <= 130 ? "#ffc233" : "#ff3040"; }
+function tempColor(t) { return t < 70 ? "#3a8dff" : t < WINDOW[0] ? "#7ab4ff" : t <= WINDOW[1] ? "#2fd27a" : t <= 130 ? "#ffc233" : "#ff2a4b"; }
 function tempStatus(t) {
   if (t < 70) return ["Cold: little grip", "#7ab4ff"];
   if (t < WINDOW[0]) return ["Below the window", "#7ab4ff"];
   if (t <= WINDOW[1]) return ["In the grip window", "#2fd27a"];
   if (t <= 130) return ["Hot: above the window", "#ffc233"];
-  return ["Overheating", "#ff3040"];
+  return ["Overheating", "#ff2a4b"];
 }
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 3500); }
 function logLine(t, html, color) {
@@ -53,7 +53,7 @@ function tile(w, t, sensorVals) {
   // fault. The gas heats far more slowly than the tread, so judge by the gas temperature (core if unknown).
   const gasT = sensorVals && sensorVals.gas != null ? sensorVals.gas : core;
   const warming = d < 0 && gasT < 85 && (t.gas_loss_pct ?? 0) < 1;
-  const dCol = warming ? "#7ab4ff" : Math.abs(d) <= 0.7 ? "#2fd27a" : Math.abs(d) <= 1.5 ? "#ffc233" : "#ff3040";
+  const dCol = warming ? "#7ab4ff" : Math.abs(d) <= 0.7 ? "#2fd27a" : Math.abs(d) <= 1.5 ? "#ffc233" : "#ff2a4b";
   const dTxt = `${d >= 0 ? "+" : ""}${d.toFixed(1)}${warming ? " · warming" : ""}`;
   const [status, sCol] = tempStatus(surf);
   const flags = [];
@@ -65,7 +65,7 @@ function tile(w, t, sensorVals) {
   const est = measured && t.est_surface != null
     ? `<div class="row"><span>AI estimate</span><b style="color:var(--ampere)">${t.est_surface.toFixed(0)}° / ${t.est_core.toFixed(0)}°</b></div>` : "";
   const comps = Object.entries(t.components || {}).map(([k, v]) =>
-    `<div class="comp"><span>${k.replace("_", " ")}</span><div class="bar"><i style="width:${Math.round(100 * v)}%;background:${v > .6 ? "#ff3040" : v > .3 ? "#ffc233" : "#3ab8ff"}"></i></div></div>`).join("");
+    `<div class="comp"><span>${k.replace("_", " ")}</span><div class="bar"><i style="width:${Math.round(100 * v)}%;background:${v > .6 ? "#ff2a4b" : v > .3 ? "#ffc233" : "#00e5ff"}"></i></div></div>`).join("");
   const pos = Math.max(0, Math.min(100, (surf - 50) / 100 * 100));
   return `<div class="tyre">
     <div class="head"><span class="name">${WNAME[w]}</span><span class="health" title="Tyre health 0-100: combines cliff, failure, temperature, pressure, flat-spot and abuse risks">health ${Math.round(h)}</span></div>
@@ -74,7 +74,7 @@ function tile(w, t, sensorVals) {
     <div class="row"><span>Core</span><b>${core.toFixed(0)}°C</b></div>
     <div class="row"><span title="Pressure in psi. In brackets: difference from the operating (hot) target of ${target.toFixed(1)} psi">Pressure</span><b>${psi.toFixed(1)} <span style="color:${dCol}">(${dTxt})</span></b></div>
     ${est}
-    ${MODE === "live" ? "" : `<div class="status" style="color:${flags.length ? "#ff3040" : sCol}">${flags.length ? flags.join(" · ") : status}</div>
+    ${MODE === "live" ? "" : `<div class="status" style="color:${flags.length ? "#ff2a4b" : sCol}">${flags.length ? flags.join(" · ") : status}</div>
     <details><summary>why this health score</summary>${comps}</details>`}
   </div>`;
 }
@@ -107,7 +107,7 @@ function renderRisk(frame) {
     // Grip budget: demand vs what the tyres can give.
     const g = e.grip;
     const axle = k === "lockup" ? "Fronts" : "Rears";
-    const gCol = !g ? "#3ab8ff" : g.pct >= 95 ? "#ff3040" : g.pct >= 80 ? "#ffc233" : "#2fd27a";
+    const gCol = !g ? "#00e5ff" : g.pct >= 95 ? "#ff2a4b" : g.pct >= 80 ? "#ffc233" : "#2fd27a";
     const gripHtml = g ? `
       <div class="grip" title="Grip in use = the combined braking/traction and cornering acceleration the tyres are transmitting. Available = base grip x downforce x temperature window x pressure (${MODE === "live" ? "from the tyre sensors" : "estimated"}).">
         <div class="gl"><span>${axle}: grip in use (${k === "lockup" ? "braking + cornering" : "traction + cornering"})</span><b>${g.use_g.toFixed(1)} g of ~${g.avail_g.toFixed(1)} g · ${Math.round(g.pct)}%</b></div>
@@ -119,7 +119,7 @@ function renderRisk(frame) {
     const src = e.src === "sensor" ? "wheel-speed sensor" : e.src === "sensor+ml" ? "sensor + AI" : "AI";
     el.innerHTML = `
       <div class="top"><span class="name">${name} ${e.on ? `<span class="flash">HAPPENING · ${src}</span>` : ""}</span>
-        <span class="pct" style="color:${(e.p || 0) > .3 ? "#ff3040" : (e.p || 0) > .1 ? "#ffc233" : "#e8ebf0"}">${pct(e.p)}</span></div>
+        <span class="pct" style="color:${(e.p || 0) > .3 ? "#ff2a4b" : (e.p || 0) > .1 ? "#ffc233" : "#f8fafc"}">${pct(e.p)}</span></div>
       ${gripHtml}
       <div class="stackbar">${bar}</div>
       <div class="causes">${keys || `<div class="muted" style="font-size:12px">${meaningful
@@ -151,27 +151,82 @@ function publishCall(frame) {
 
 // ---------------------------------------------------------------- map
 const map = $("map"), mctx = map.getContext("2d");
-let bounds = null;
+let bounds = null, mapBg = null;   // mapBg: the static circuit drawing, cached until the size or track changes
 function fitMap() {
   const r = map.getBoundingClientRect();
   map.width = r.width * devicePixelRatio; map.height = r.height * devicePixelRatio;
+  mapBg = null;
   if (!data || !data.track.length) return;
   const xs = data.track.map((p) => p[0]), ys = data.track.map((p) => p[1]);
   bounds = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
 }
 function toPx(x, y) {
-  const pad = 22 * devicePixelRatio, W = map.width - 2 * pad, H = map.height - 2 * pad;
+  const pad = 26 * devicePixelRatio, W = map.width - 2 * pad, H = map.height - 2 * pad;
   const s = Math.min(W / (bounds.x1 - bounds.x0), H / (bounds.y1 - bounds.y0));
   const ox = pad + (W - s * (bounds.x1 - bounds.x0)) / 2, oy = pad + (H - s * (bounds.y1 - bounds.y0)) / 2;
   return [ox + (x - bounds.x0) * s, map.height - (oy + (y - bounds.y0) * s)];
 }
+
+// Aerial view of a circuit: mown grass, gravel traps and red/white kerbs at the corners, asphalt, start/finish line.
+function buildMapBg() {
+  const d = devicePixelRatio, c = document.createElement("canvas");
+  c.width = map.width; c.height = map.height;
+  const g = c.getContext("2d");
+  // Grass with diagonal mowing stripes.
+  g.fillStyle = "#3d7337"; g.fillRect(0, 0, c.width, c.height);
+  g.save(); g.translate(c.width / 2, c.height / 2); g.rotate(-Math.PI / 5);
+  const span = Math.hypot(c.width, c.height), band = 34 * d;
+  g.fillStyle = "#437b3c";
+  for (let x = -span; x < span; x += 2 * band) g.fillRect(x, -span, band, 2 * span);
+  g.restore();
+
+  const pts = data.track.map((p) => toPx(p[0], p[1])), n = pts.length;
+  const path = () => { g.beginPath(); pts.forEach(([px, py], i) => (i ? g.lineTo(px, py) : g.moveTo(px, py))); g.closePath(); };
+  // Corners: where the direction turns sharply over a few points.
+  const k = 3, corner = pts.map((_, i) => {
+    const [ax, ay] = pts[(i - k + n) % n], [bx, by] = pts[i], [cx, cy] = pts[(i + k) % n];
+    let t = Math.atan2(cy - by, cx - bx) - Math.atan2(by - ay, bx - ax);
+    t = Math.atan2(Math.sin(t), Math.cos(t));
+    return Math.abs(t) > 0.22;
+  });
+  // Each corner as one continuous path, so dashed kerbs alternate red / white along it.
+  const cornerRuns = (fn) => {
+    let i = 0;
+    while (i < n) {
+      if (!corner[i]) { i++; continue; }
+      g.beginPath(); g.moveTo(...pts[i]);
+      while (i < n && corner[i]) { g.lineTo(...pts[(i + 1) % n]); i++; }
+      fn();
+    }
+  };
+  g.lineJoin = "round"; g.lineCap = "round";
+  // Gravel traps on the outside of corners, then a strip of tarmac run-off all round.
+  g.strokeStyle = "#d2bf92"; g.lineWidth = 40 * d; cornerRuns(() => g.stroke());
+  path(); g.strokeStyle = "#7a7c7f"; g.lineWidth = 18 * d; g.stroke();
+  // Red / white kerbs on the corners.
+  g.lineCap = "butt"; g.lineWidth = 18 * d;
+  g.setLineDash([5 * d, 5 * d]);
+  g.strokeStyle = "#f4f4f4"; cornerRuns(() => g.stroke());
+  g.lineDashOffset = 5 * d; g.strokeStyle = "#d8232f"; cornerRuns(() => g.stroke());
+  g.setLineDash([]); g.lineDashOffset = 0;
+  // White track-limit lines, then the asphalt.
+  path(); g.strokeStyle = "#e9e9e6"; g.lineWidth = 11.5 * d; g.lineCap = "round"; g.stroke();
+  path(); g.strokeStyle = "#1c1d20"; g.lineWidth = 9.5 * d; g.stroke();
+  // Chequered start / finish line across the track at the first point.
+  const [sx, sy] = pts[0], [nx, ny] = pts[1 % n], ang = Math.atan2(ny - sy, nx - sx);
+  g.save(); g.translate(sx, sy); g.rotate(ang);
+  const sq = 2.4 * d;
+  for (let i = 0; i < 2; i++) for (let j = -2; j < 2; j++) {
+    g.fillStyle = (i + j) % 2 ? "#111" : "#fff"; g.fillRect((i - 1) * sq, j * sq, sq, sq);
+  }
+  g.restore();
+  return c;
+}
 function renderMap(x, y, level) {
   mctx.clearRect(0, 0, map.width, map.height);
   if (!bounds) return;
-  mctx.lineWidth = 8 * devicePixelRatio; mctx.strokeStyle = "#232a35"; mctx.lineJoin = "round";
-  mctx.beginPath();
-  data.track.forEach((p, i) => { const [px, py] = toPx(p[0], p[1]); i ? mctx.lineTo(px, py) : mctx.moveTo(px, py); });
-  mctx.closePath(); mctx.stroke();
+  if (!mapBg) mapBg = buildMapBg();
+  mctx.drawImage(mapBg, 0, 0);
   for (const p of pins) { const [px, py] = toPx(p.x, p.y); mctx.fillStyle = p.c; mctx.beginPath(); mctx.arc(px, py, (p.r || 3.5) * devicePixelRatio, 0, 7); mctx.fill(); }
   const [cx, cy] = toPx(x, y);
   mctx.fillStyle = LEVEL_COLOR[level || 0];
@@ -187,39 +242,10 @@ function renderTelemetry(s) {
   $("thrBar").style.width = `${100 * thr}%`; $("thrPct").textContent = `${Math.round(100 * thr)}%`;
   $("brkBar").style.width = `${100 * brk}%`; $("brkPct").textContent = MODE === "replay" ? (brk ? "on" : "off") : `${Math.round(100 * brk)}%`;
 }
-function lineChart(canvas, series, ymax, cursor) {
-  const r = canvas.getBoundingClientRect(); const dpr = devicePixelRatio;
-  canvas.width = r.width * dpr; canvas.height = r.height * dpr;
-  const c = canvas.getContext("2d"), W = canvas.width, H = canvas.height, p = 6 * dpr;
-  c.clearRect(0, 0, W, H);
-  const n = Math.max(2, ...series.map((s) => s.values.length));
-  c.strokeStyle = "#242a35"; c.lineWidth = 1;
-  for (let g = 0; g <= 3; g++) { const y = p + (H - 2 * p) * g / 3; c.beginPath(); c.moveTo(p, y); c.lineTo(W - p, y); c.stroke(); }
-  if (cursor != null && cursor >= 0) { const x = p + (W - 2 * p) * cursor / (n - 1); c.strokeStyle = "#8e97a8"; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(x, p); c.lineTo(x, H - p); c.stroke(); c.setLineDash([]); }
-  for (const s of series) {
-    c.strokeStyle = s.color; c.lineWidth = 2 * dpr; c.beginPath(); let st = false;
-    s.values.forEach((v, i) => { if (v == null) { st = false; return; } const x = p + (W - 2 * p) * i / (n - 1), y = H - p - (H - 2 * p) * Math.min(v, ymax) / ymax; st ? c.lineTo(x, y) : c.moveTo(x, y); st = true; });
-    c.stroke();
-  }
-  c.font = `${11 * dpr}px system-ui`; let lx = p;
-  for (const s of series) { c.fillStyle = s.color; c.fillText(s.label, lx, 13 * dpr); lx += c.measureText(s.label).width + 14 * dpr; }
-}
 function renderLife(frame) {
   const lap = frame.lap || {};
   $("safeLaps").textContent = lap.safe_laps != null ? lap.safe_laps : "–";
   $("medianLaps").textContent = lap.median_laps != null ? lap.median_laps : "–";
-  if (MODE === "live") {
-    const lt = frame.lap_times || [];
-    const best = Math.min(...lt);
-    lineChart($("lifeChart"), [{ label: "lap time vs best (s ×10)", color: "#3ab8ff", values: lt.map((v) => (v - best) * 10) }], 40);
-    return;
-  }
-  if (!data.laps.length) return;
-  const cur = data.laps.findIndex((l) => l.lap === lap.lap);
-  lineChart($("lifeChart"), [
-    { label: "safe laps (90%)", color: "#2fd27a", values: data.laps.map((l) => l.safe_laps ?? null) },
-    { label: "P(cliff in 3 laps) ×40", color: "#ff7a1a", values: data.laps.map((l) => l.p_cliff_3 != null ? 40 * l.p_cliff_3 : null) },
-  ], 40, cur);
 }
 
 // ---------------------------------------------------------------- events on the map / log
@@ -227,11 +253,11 @@ function noteEvents(frame, t) {
   for (const k of ["lockup", "wheelspin"]) {
     const on = frame.events[k] && frame.events[k].on;
     if (on && !prevOn[k]) {
-      pins.push({ x: frame.x, y: frame.y, c: k === "lockup" ? "#ff3040" : "#2fd27a" });
+      pins.push({ x: frame.x, y: frame.y, c: k === "lockup" ? "#ff2a4b" : "#2fd27a" });
       if (pins.length > 500) pins.shift();
       const e = frame.events[k];
       const top = e.factors ? Object.keys(e.factors)[0] : null;
-      logLine(t, `${k === "lockup" ? "Lock-up" : "Wheelspin"} at ${Math.round(frame.speed)} km/h${top ? ` · mainly ${top.toLowerCase()}` : ""}`, k === "lockup" ? "#ff6b78" : "#7be3a8");
+      logLine(t, `${k === "lockup" ? "Lock-up" : "Wheelspin"} at ${Math.round(frame.speed)} km/h${top ? ` · mainly ${top.toLowerCase()}` : ""}`, k === "lockup" ? "#ff6b81" : "#7be3a8");
     }
     prevOn[k] = on;
   }
@@ -289,7 +315,7 @@ function buildTimeline() {
       keys.push({ i, label: `Real failure · L${fl}`, level: 9 });
     }
   }
-  $("keys").innerHTML = keys.map((k, j) => `<button class="btn small" data-i="${k.i}" style="border-color:${k.level === 9 ? "#ff3040" : LEVEL_COLOR[k.level]}">${k.label}</button>`).join("");
+  $("keys").innerHTML = keys.map((k, j) => `<button class="btn small" data-i="${k.i}" style="border-color:${k.level === 9 ? "#ff2a4b" : LEVEL_COLOR[k.level]}">${k.label}</button>`).join("");
   $("keys").querySelectorAll("button").forEach((b) => b.onclick = () => seek(Number(b.dataset.i) - 8));
   bar.onclick = (e) => { const r = bar.getBoundingClientRect(); seek(Math.round((n - 1) * (e.clientX - r.left) / r.width)); };
 }
@@ -345,7 +371,7 @@ function connect() {
       if (msg.driver > drivers) closeOnboard();   // a phone just joined as the driver
       drivers = msg.driver;
       $("dotDriver").className = `dot${msg.driver ? " live" : ""}`; $("dotCrew").className = `dot${msg.crew ? " live" : ""}`;
-    } else if (msg.type === "notice") { toast(msg.text); logLine(liveState ? liveState.t : 0, msg.text, "#8e97a8"); }
+    } else if (msg.type === "notice") { toast(msg.text); logLine(liveState ? liveState.t : 0, msg.text, "#94a3b8"); }
     else if (msg.type === "crew_ack") toast("✔ Pit crew acknowledged the call");
   };
   ws.onclose = () => setTimeout(connect, 1500);
