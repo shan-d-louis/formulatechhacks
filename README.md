@@ -12,6 +12,7 @@ Since 2022 every F1 car has carried a standard FIA tyre-pressure sensor, but the
 - **Qatar 2023:** kerbs caused sidewall damage, and the FIA imposed an emergency 18-lap limit per set.
 - **Nürburgring 2005:** a flat spot vibrated a suspension to failure.
 
+- [Product Demo Deck](./McQueen%20Presentation.pdf)
 - [Product overview (PDF)](./How%20SIDEWALL%20works.pdf)
 - [Pit wall design concept (PDF)](./SIDEWALL%20clearer%20pit%20wall%20concept.pdf)
 
