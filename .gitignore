@@ -13,9 +13,18 @@ training/cache/
 CLAUDE.md
 .claude/
 .env
+.env.local
+.env.prod
+.env.*.local
+!.env.example
+!.env.local.example
+!.env.prod.example
 
 # Large or rebuildable training data (rebuild with training/fetch.py + prepare.py)
 training/data/
 
 # node modules
 node_modules/
+
+# Supabase local CLI state
+supabase/.temp/
