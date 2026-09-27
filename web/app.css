@@ -1,4 +1,4 @@
-/* SIDEWALL design system: F1 Hacks dark theme (slate-navy cards, neon cyan primary, crimson secondary).
+/* Lightning Response design system: F1 Hacks dark theme (slate-navy cards, neon cyan primary, crimson secondary).
    Pit-call colours (ok / advise / box / now) keep their meaning across every page. */
 :root {
   /* F1 Hacks palette */
@@ -67,10 +67,8 @@ button, select { font: inherit; color: inherit; }
 /* ---------- top bar ---------- */
 .topbar { display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--line);
   background: rgba(18, 24, 36, .92); backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
-.brand { display: flex; align-items: baseline; gap: 10px; text-decoration: none; }
-.brand b { font-size: 19px; font-weight: 900; letter-spacing: .2em; }
-.brand b::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%;
-  background: var(--f1-red); box-shadow: 0 0 8px var(--f1-red); vertical-align: middle; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand img { display: block; width: 128px; height: 64px; object-fit: contain; }
 .brand span { font-size: 12px; color: var(--muted); }
 .tabs { display: flex; gap: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
 .tabs a { padding: 6px 12px; border-radius: 9px; text-decoration: none; font-size: 14px; font-weight: 500; color: var(--faint); transition: color .15s, background .15s; }
@@ -256,7 +254,6 @@ canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid
   background: #0b0e13;
   border-color: rgba(255,255,255,.08);
 }
-.home-topbar .brand b { font-size: 18px; letter-spacing: .24em; }
 .home-page main { max-width: 1320px; margin: auto; padding: 0 clamp(24px, 6vw, 88px) 56px; }
 .home-hero {
   min-height: 390px;
@@ -277,14 +274,10 @@ canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid
 .hero-lead { margin: 0; color: var(--home-muted); font-size: 17px; line-height: 1.6; }
 .hero-art {
   height: 250px;
-  border-radius: 30px;
-  background:
-    radial-gradient(ellipse at 55% 50%, rgba(85,195,200,.11), transparent 58%),
-    radial-gradient(ellipse at 65% 58%, rgba(223,60,73,.12), transparent 68%),
-    repeating-conic-gradient(from 0deg, rgba(237,239,232,.045) 0 25%, transparent 0 50%) 50% / 36px 36px;
-  mask-image: radial-gradient(ellipse at center, #000 24%, transparent 78%);
-  opacity: .78;
+  display: grid;
+  place-items: center;
 }
+.hero-art img { width: 100%; max-height: 250px; object-fit: contain; }
 .home-paths { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .path-card {
   --path-accent: var(--home-red);
@@ -316,7 +309,7 @@ canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid
   .home-hero { min-height: 0; display: block; }
   .hero-copy { padding: 66px 0 28px; }
   .hero-copy h1 { font-size: clamp(36px, 10vw, 52px); }
-  .hero-art { display: none; }
+  .hero-art { height: auto; margin-bottom: 24px; }
   .home-paths { grid-template-columns: 1fr; gap: 10px; }
   .path-card { min-height: 172px; padding: 19px 20px 18px; }
 }
