@@ -1,4 +1,0 @@
-project_id = "iuuuifrcdetapzgsnjyu"
-
-[functions.sidewall-health]
-verify_jwt = false

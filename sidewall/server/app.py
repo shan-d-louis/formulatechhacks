@@ -27,12 +27,10 @@ from sidewall import config
 from sidewall.engine.monitor import load_bundles
 from sidewall.server import feedback
 from sidewall.server.jobs import JOBS, JobRecord
-from sidewall.server.runtime import load_runtime_env, runtime_host, runtime_port
 from sidewall.server.utils import short_git_hash
 from sidewall.sources import replay
 
 WEB = config.ROOT / "web"
-load_runtime_env(config.ROOT)
 BACKEND_DIR = config.ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
@@ -451,8 +449,8 @@ async def live_debris():
     return {"ok": True, "wheel": LIVE.sim.debris()}
 
 
-PORT = runtime_port(8000)
+PORT = 8000
 
 if __name__ == "__main__":
     print(f"SIDEWALL on http://localhost:{PORT}  (phones: http://{lan_ip()}:{PORT})")
-    uvicorn.run(app, host=runtime_host(), port=PORT)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
