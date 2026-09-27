@@ -13,7 +13,7 @@
   html, body { height: 100%; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
     -webkit-touch-callout: none; overscroll-behavior: none; }
   body { display: flex; flex-direction: column; }
-  .hud { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 8px 14px;
+  .hud { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 14px;
     border-bottom: 1px solid var(--line); }
   .spd { font-family: var(--mono); font-size: 34px; font-weight: 800; line-height: 1; }
   .spd small { font-size: 12px; color: var(--muted); font-weight: 500; }
@@ -22,20 +22,39 @@
   .adv { font-size: 13px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lapt { font-family: var(--mono); text-align: right; font-size: 13px; color: var(--muted); }
   .lapt b { color: var(--text); font-size: 18px; }
-  /* Speedometer slot. Drop the asset in as <img> (or <svg>) inside #speedo. */
-  .speedo { flex: none; width: min(520px, calc(100% - 24px)); height: clamp(80px, 30vh, 170px); margin: 12px auto 0;
-    border-radius: 16px; border: 2px dashed var(--line);
+  /* Centre cluster: brake | speedometer | throttle, stacked (speedometer on top) on narrow screens. */
+  .cluster { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: clamp(12px, 3vw, 28px);
+    padding: 12px 16px calc(56px + env(safe-area-inset-bottom)); }
+  /* Speedometer: SVG gauge. Needle and arc follow the sim's speed; inner arcs show brake (left) and throttle (right). */
+  .speedo { flex: none; width: min(360px, 42vw); height: clamp(80px, 38vh, 200px);
+    border-radius: 16px; border: 2px solid var(--line);
     background: var(--panel); display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .speedo:has(img, svg, canvas) { border-style: solid; }
-  .speedo img, .speedo svg, .speedo canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
-  .speedo .ph { color: var(--faint); font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-  /* Brake bottom-left, throttle bottom-right, as buttons under the thumbs. */
-  .pedals { flex: 1; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; min-height: 0;
-    padding: 12px 20px calc(16px + env(safe-area-inset-bottom)); }
-  .pedal { position: relative; width: clamp(110px, 22vw, 150px); height: clamp(64px, 18vh, 96px); border-radius: 18px;
-    border: 2px solid #1e293b; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #121824; }
+  .speedo svg { width: 100%; height: 100%; display: block; }
+  .g-track { fill: none; stroke: var(--track); stroke-width: 12; }
+  .g-speed { fill: none; stroke: var(--accent); stroke-width: 12; }
+  .g-in-track { fill: none; stroke: var(--track); stroke-width: 7; stroke-linecap: round; }
+  .g-brk { fill: none; stroke: var(--now); stroke-width: 7; stroke-linecap: round; }
+  .g-thr { fill: none; stroke: var(--ok); stroke-width: 7; stroke-linecap: round; }
+  .g-tick { stroke: var(--faint); stroke-width: 1.5; } .g-tick.major { stroke: var(--muted); stroke-width: 2.5; }
+  .g-num { fill: var(--muted); font: 600 10px var(--mono); text-anchor: middle; dominant-baseline: middle; }
+  .g-needle { stroke: var(--text); stroke-width: 3.5; stroke-linecap: round; }
+  .g-hub { fill: var(--text); }
+  .g-val { fill: var(--text); font: 800 34px var(--mono); text-anchor: middle; }
+  .g-unit { fill: var(--muted); font: 500 10px var(--mono); text-anchor: middle; letter-spacing: .08em; }
+  .g-gear { fill: var(--accent); font: 800 15px var(--mono); text-anchor: middle; }
+  /* Brake left of the speedometer, throttle right: hold to press further. */
+  .pedal { flex: none; position: relative; width: clamp(96px, 20vw, 150px); height: clamp(90px, 38vh, 200px); border-radius: 18px;
+    border: 2px solid #1e293b; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #121824;
+    touch-action: none; }
+  @media (max-aspect-ratio: 1/1) {
+    .cluster { flex-wrap: wrap; align-content: center; }
+    .speedo { order: -1; width: 100%; max-width: 520px; height: clamp(80px, 28vh, 170px); }
+    .pedal { height: clamp(90px, 24vh, 160px); width: clamp(110px, 38vw, 170px); }
+  }
   .pedal .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; opacity: .9; }
   .pedal .lbl { position: relative; font-weight: 900; letter-spacing: .12em; font-size: 13px; text-align: center; }
+  .pedal .ico { display: block; width: 34px; height: 34px; margin: 0 auto 6px; fill: none; stroke: currentColor;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .pedal .lbl small { display: block; font-size: 15px; font-family: var(--mono); letter-spacing: 0; }
   #brake .fill { background: linear-gradient(0deg, #ff2a4b, #ff7a1a); }
   #throttle .fill { background: linear-gradient(0deg, #13a85a, #2fd27a); }
@@ -57,17 +76,33 @@
     <div class="mid"><span class="call" id="call">–</span><div class="adv" id="adv">Steering is automatic: you control the pedals.</div></div>
     <div class="lapt">lap <span id="lap">–</span><br><b id="lapt">–</b></div>
   </div>
-  <div class="speedo" id="speedo" aria-label="Speedometer"><span class="ph">Speedometer</span></div>
-  <div class="pedals">
-    <div class="pedal" id="brake"><div class="fill"></div><div class="lbl">BRAKE<small id="brkv">0%</small></div></div>
-    <div class="pedal" id="throttle"><div class="fill"></div><div class="lbl">THROTTLE<small id="thrv">0%</small></div></div>
+  <div class="cluster">
+    <div class="pedal" id="brake"><div class="fill"></div><div class="lbl">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5.5"/><path d="M5 5.5a9 9 0 0 0 0 13M19 5.5a9 9 0 0 1 0 13"/></svg>
+      BRAKE<small id="brkv">0%</small></div></div>
+    <div class="speedo" id="speedo" role="img" aria-label="Speedometer">
+      <svg viewBox="0 0 300 180">
+        <path class="g-track" id="g-track"/>
+        <path class="g-speed" id="g-speed" pathLength="1" stroke-dasharray="0 1"/>
+        <g id="g-ticks"></g>
+        <path class="g-in-track" id="g-brk-track"/><path class="g-brk" id="g-brk" pathLength="1" stroke-dasharray="0 1"/>
+        <path class="g-in-track" id="g-thr-track"/><path class="g-thr" id="g-thr" pathLength="1" stroke-dasharray="0 1"/>
+        <line class="g-needle" id="g-needle" x1="150" y1="42" x2="150" y2="16"/>
+        <text class="g-val" id="g-val" x="150" y="128">0</text>
+        <text class="g-unit" x="150" y="143">KM/H</text>
+        <text class="g-gear" id="g-gear" x="150" y="166">–</text>
+      </svg>
+    </div>
+    <div class="pedal" id="throttle"><div class="fill"></div><div class="lbl">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="15" rx="2.5"/><path d="M10 6.5h4M10 10h4M10 13.5h4M12 17.5v3M8 21h8"/></svg>
+      THROTTLE<small id="thrv">0%</small></div></div>
   </div>
   <button class="btn small release" id="release" hidden>Hand back to autopilot</button>
 
   <div class="gate" id="gate">
     <h1>SIDEWALL · Driver</h1>
     <p>You're the driver. Steering follows the racing line; you control the <b>brake</b> (left) and <b>throttle</b> (right).
-      Hold a button to brake or accelerate. Brake too late or floor it out of slow corners and the pit wall will see it coming.</p>
+      Hold a button to press further; let go to release it. Brake too late or floor it out of slow corners and the pit wall will see it coming.</p>
     <button class="btn primary" id="claim" disabled>Connecting…</button>
     <div class="rot" id="rot">↻ Turn your phone sideways</div>
   </div>
@@ -85,6 +120,7 @@ function connect() {
     const m = JSON.parse(e.data);
     if (m.type !== "state") return;
     $("spd").textContent = Math.round(m.speed); $("gear").textContent = `gear ${m.gear}`;
+    gauge.target = m.speed; gauge.gear = `GEAR ${m.gear}`; gauge.srvThr = m.throttle || 0; gauge.srvBrk = m.brake || 0;
     $("lap").textContent = m.lap; $("lapt").textContent = m.lap_time.toFixed(1);
     $("call").textContent = m.call === "OK" ? "OK" : m.call; $("call").style.color = LEVEL_COLOR[m.level || 0];
     if (m.advice) $("adv").textContent = m.advice;
@@ -94,6 +130,46 @@ function connect() {
     document.body.classList.toggle("flash-lock", !!lock); document.body.classList.toggle("flash-spin", !!spin && !lock);
   };
 }
+// Speedometer. Angles are degrees clockwise from 12 o'clock; the scale sweeps -120..+120.
+const G = { cx: 150, cy: 120, r: 100, max: 360, a0: -120, a1: 120, ease_s: 0.12 };
+const gauge = { target: 0, shown: 0, gear: "–", srvThr: 0, srvBrk: 0, last: 0 };
+const polar = (r, a) => [G.cx + r * Math.sin(a * Math.PI / 180), G.cy - r * Math.cos(a * Math.PI / 180)];
+function arc(r, a0, a1) {
+  const [x0, y0] = polar(r, a0), [x1, y1] = polar(r, a1);
+  return `M${x0.toFixed(1)} ${y0.toFixed(1)}A${r} ${r} 0 ${Math.abs(a1 - a0) > 180 ? 1 : 0} ${a1 > a0 ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+}
+function buildGauge() {
+  $("g-track").setAttribute("d", arc(G.r, G.a0, G.a1));
+  $("g-speed").setAttribute("d", arc(G.r, G.a0, G.a1));
+  for (const [id, a0, a1] of [["brk", -120, -30], ["thr", 120, 30]]) {       // both fill upward from the bottom
+    $(`g-${id}-track`).setAttribute("d", arc(54, a0, a1)); $(`g-${id}`).setAttribute("d", arc(54, a0, a1));
+  }
+  let ticks = "";
+  for (let v = 0; v <= G.max; v += 20) {
+    const a = G.a0 + (G.a1 - G.a0) * v / G.max, major = v % 40 === 0;
+    const [x0, y0] = polar(major ? 80 : 84, a), [x1, y1] = polar(90, a);
+    ticks += `<line class="g-tick${major ? " major" : ""}" x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}"/>`;
+    if (major) { const [tx, ty] = polar(68, a); ticks += `<text class="g-num" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}">${v}</text>`; }
+  }
+  $("g-ticks").innerHTML = ticks;
+}
+function drawGauge(now) {
+  const dt = gauge.last ? (now - gauge.last) / 1000 : 0; gauge.last = now;
+  gauge.shown += (gauge.target - gauge.shown) * (1 - Math.exp(-dt / G.ease_s));   // smooth between 10 Hz updates
+  const f = Math.max(0, Math.min(1, gauge.shown / G.max));
+  $("g-speed").setAttribute("stroke-dasharray", `${f} 1`);
+  $("g-needle").setAttribute("transform", `rotate(${G.a0 + (G.a1 - G.a0) * f} ${G.cx} ${G.cy})`);
+  $("g-val").textContent = Math.round(gauge.shown);
+  $("g-gear").textContent = gauge.gear;
+  // While driving, the inner arcs follow this phone's pedals instantly; otherwise they show the autopilot's.
+  const thr = driving ? state.throttle : gauge.srvThr, brk = driving ? state.brake : gauge.srvBrk;
+  for (const [id, v] of [["g-thr", thr], ["g-brk", brk]]) {
+    $(id).setAttribute("stroke-dasharray", `${v} 1`); $(id).style.visibility = v > 0.005 ? "visible" : "hidden";   // no round-cap dot at 0
+  }
+  requestAnimationFrame(drawGauge);
+}
+buildGauge(); requestAnimationFrame(drawGauge);
+
 function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
 function sendInput(force) {
   if (!driving) return;
@@ -112,15 +188,23 @@ $("claim").onclick = async () => {
 };
 $("release").onclick = () => { driving = false; state.throttle = state.brake = 0; send({ type: "release" }); showGate("Take the wheel"); };
 
-// Pedal buttons: pointer events with capture, one pointer per button. Holding a button = full brake / throttle.
+// Pedal buttons: pointer events with capture, one pointer per button. Holding a button ramps the pedal
+// from 0 to 100% over RAMP_S seconds; letting go releases it at once.
+const RAMP_S = { brake: 0.6, throttle: 1.0 };
 function bindPedal(id) {
   const el = $(id), fill = el.querySelector(".fill"), label = $(id === "brake" ? "brkv" : "thrv");
-  let pid = null;
-  const set = (v) => { state[id] = v; fill.style.height = `${v * 100}%`; label.textContent = `${Math.round(v * 100)}%`; el.classList.toggle("active", v > 0); sendInput(false); };
+  let pid = null, last = 0;
+  const set = (v) => { state[id] = v; fill.style.height = `${v * 100}%`; label.textContent = `${Math.round(v * 100)}%`; el.classList.toggle("active", pid !== null); sendInput(false); };
+  const ramp = (now) => {
+    if (pid === null) return;
+    const dt = (now - last) / 1000; last = now;
+    set(Math.min(1, state[id] + dt / RAMP_S[id]));
+    requestAnimationFrame(ramp);
+  };
   el.addEventListener("pointerdown", (e) => {
     e.preventDefault(); pid = e.pointerId;
     try { el.setPointerCapture(pid); } catch (_) {}      // capture is a nicety; the pedal must work without it
-    set(1);
+    last = performance.now(); set(state[id]); requestAnimationFrame(ramp);
   });
   const up = (e) => { if (e.pointerId === pid) { pid = null; set(0); } };
   el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up); el.addEventListener("lostpointercapture", up);
