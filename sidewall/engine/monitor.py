@@ -14,7 +14,7 @@ from sidewall.models.flatspot import FlatSpotRisk
 from sidewall.models.labels import COLD_CORE_C, HOT_SURFACE_C, LOCK_KAPPA, SPIN_KAPPA
 from sidewall.models.grip import Envelope, budget as grip_budget
 from sidewall.models.risk import RiskModel, advice
-from sidewall.twin.gas import ATM_PSI, LeakDetector, hot_pressure
+from sidewall.twin.gas import LeakDetector, hot_pressure
 
 
 def load_bundles():
@@ -41,10 +41,9 @@ class TyreMonitor:
         self.psi_target = {w: float(hot_pressure(self.p_cold[w], self.t_cold, OPERATING_GAS_C)) for w in WHEELS}
 
     # ------------------------------------------------------------------ per-frame models
-    def frame_outputs(self, stream: pd.DataFrame, leaks: dict | None = None,
-                      measured: pd.DataFrame | None = None, since: float | None = None) -> pd.DataFrame:
-        """stream: CarStream (any rate). leaks: {wheel: (t_start, frac_per_min)} to simulate a puncture on
-        the TPMS signal. measured: optional real sensor channels with a `t` column (psi_w, tgas_w, liner_w from
+    def frame_outputs(self, stream: pd.DataFrame, measured: pd.DataFrame | None = None,
+                      since: float | None = None) -> pd.DataFrame:
+        """stream: CarStream (any rate). measured: optional real sensor channels with a `t` column (psi_w, tgas_w, liner_w from
         a TPMS; ir_surf_w from infrared tread sensors; kappa_w from wheel-speed sensors; vibflat_w from a hub
         accelerometer); they replace the estimates when present and the estimates are kept as est_*.
         since: only return frames after this time (features are still computed on the whole stream, so
@@ -80,12 +79,7 @@ class TyreMonitor:
                 core = np.full(len(f), 85.0)
                 surf = core + 10
             out[f"core_{w}"], out[f"surf_{w}"] = core, surf
-            psi = hot_pressure(self.p_cold[w], self.t_cold, core)
-            if leaks and w in leaks:
-                t0, frac_per_min = leaks[w]
-                lost = np.clip((out["t"] - t0) / 60.0 * frac_per_min, 0, 0.9)
-                psi = (psi + ATM_PSI) * (1 - lost) - ATM_PSI
-            out[f"psi_{w}"] = psi
+            out[f"psi_{w}"] = hot_pressure(self.p_cold[w], self.t_cold, core)
         out["lockup_src"], out["wheelspin_src"] = np.where(out["lockup"], "ml", ""), np.where(out["wheelspin"], "ml", "")
         if measured is not None and len(measured):
             m = measured.sort_values("t")

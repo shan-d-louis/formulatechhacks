@@ -4,7 +4,20 @@
     {
       "name": "sidewall",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "sidewall.server.app"],
+      "runtimeArgs": [
+        "-m",
+        "sidewall.server.app"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "sidewall-tunnel",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "sidewall.server.app",
+        "--tunnel"
+      ],
       "port": 8000
     }
   ]

@@ -1,27 +1,169 @@
-# SIDEWALL: AI tyre-safety pit wall
+# Lightning Response: AI tyre-safety pit wall
 
 **FormulaTech Hacks: Track 1 (Safety Diagnosis) · Ollon (Data-Driven Motorsport Safety) · Ampere (AI for Motorsport Safety)**
 
+Lightning Response watches every tyre on a race car, predicts trouble before it happens, explains why, and tells the
+pit wall what to do: **OK, MANAGE, BOX THIS LAP or BOX NOW**.
+
 Since 2022 every F1 car has carried a standard FIA tyre-pressure sensor, but there is no public analytics layer that
 *predicts* tyre failure. Tyres keep causing dangerous incidents:
-- **Baku 2021:** Verstappen and Stroll had blowouts at around 300 km/h.
+- **Baku 2021:** Verstappen and Stroll had rear-tyre failures at around 300 km/h.
 - **Silverstone 2020:** three front-left failures in the final laps.
-- **Qatar 2023:** kerbs caused sidewall damage, and the FIA imposed an emergency 18-lap cap.
+- **Qatar 2023:** kerbs caused sidewall damage, and the FIA imposed an emergency 18-lap limit per set.
 - **Nürburgring 2005:** a flat spot vibrated a suspension to failure.
 
-SIDEWALL watches every tyre in real time. It detects lock-ups, wheelspin, overheating, cold tyres, flat spots and air loss. It predicts how many laps each tyre has left, and radios the pit crew's phones when it's time to box.
+- [Product overview (PDF)](./How%20SIDEWALL%20works.pdf)
+- [Pit wall design concept (PDF)](./SIDEWALL%20clearer%20pit%20wall%20concept.pdf)
+
+## What it does
+- **Predicts** lock-ups and wheelspin about a second ahead, and detects overheating, cold tyres, flat spots and air loss.
+- **Explains** every risk: a calibrated probability, the cause (braking, throttle, speed and cornering, engine and
+  gearing, tyre heat, pressure), how much of the tyres' grip is in use, and a plain-language fix.
+- **Forecasts tyre life:** laps until the performance cliff, with a "safe laps left" promise calibrated to hold 90% of
+  the time.
+- **Acts:** one health score (0–100) per tyre and one pit call, read out as a radio message.
+- **Proves it on real races:** replays of Silverstone 2020 and Baku 2021 with models that never saw those seasons,
+  including the moment each tyre really failed.
+- **Lets judges drive:** a phone becomes the pedals of a live simulated car; four scenario buttons force a lock-up,
+  wheelspin, a pressure leak or overheating so the pit wall can be seen catching each one.
 
 ## How it maps to the tracks
-| | What SIDEWALL does |
+| Track | What Lightning Response shows |
 |---|---|
-| **Track 1: Safety Diagnosis** | Real-time per-tyre health (0–100) and an escalating pit call (OK, ADVISE, BOX THIS LAP, BOX NOW), sent to crew phones. Lock-up and wheelspin warnings come 0.5–1.75 s early, and the laps-to-failure bound is ready before the cliff arrives. |
-| **Ollon: data-driven** | 2018–2025 FastF1 data (thousands of stints) turned into a tyre-safety dataset, and a **data-driven stint cap for every circuit** (Kaplan–Meier), i.e. a "Qatar rule" everywhere before anything breaks. |
-| **Ampere: AI** | Early-warning event detectors trained on sim ground truth and run on real F1 telemetry, a virtual TPMS, and survival models with conformal calibration. |
+| **Track 1: Safety Diagnosis** | Real-time per-tyre health (0–100) and an escalating pit call. Lock-up and wheelspin warnings come 0.5–1.75 s early, and the safe-laps bound is ready before the cliff arrives. Silverstone 2020 is called BOX 15 laps before the real failure. |
+| **Ollon: data-driven** | Six seasons of public F1 data (2018–2021, 2024–2025: 127 races, 4,990 stints, 138,683 laps) turned into a tyre-safety dataset, and a **data-driven stint limit for all 34 circuits**: the Qatar rule, set before anything breaks. |
+| **Ampere: AI** | Calibrated, explained early-warning models trained on sim ground truth and run on real F1 telemetry, a virtual tyre sensor, and survival models with a conformally calibrated safe-laps bound. |
+| **TELUS: connected (bonus)** | The driver's phone is the car's pedals, over any network through a Cloudflare tunnel. |
 
-- [Product Overview](./How%20SIDEWALL%20works.pdf)
-- [Product Improvements](./SIDEWALL%20clearer%20pit%20wall%20concept.pdf)
+## Quick start
+The repository already contains the trained models and the demo replays, so the app runs without downloading data.
 
-## Models (all trained on existing public datasets)
+**1. Install** (Python 3.12+; `uv` pins 3.13):
+
+```bash
+uv sync
+```
+
+Without `uv`:
+
+```bash
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt
+```
+
+On macOS/Linux, replace `.venv/Scripts/python` with `.venv/bin/python`.
+
+**2. Run** everything (web app, APIs, WebSockets, live simulator) in one process on port 8000:
+
+```bash
+uv run python -m sidewall.server.app
+```
+
+**3. Open** http://localhost:8000.
+
+| Page | What it is |
+|---|---|
+| `/` | Home: choose a replay, the live simulator or the data |
+| `/pitwall?mode=replay` | Replay a real race (Silverstone 2020, Baku 2021) |
+| `/pitwall?mode=live` | Drive it yourself: the live simulator, driven from a phone |
+| `/driver` | The phone controller: brake and throttle, BOX, scenario buttons |
+| `/atlas` | Explore the data: circuits, stint limits, survival curves, degradation, model scorecard and metrics plots |
+| `/crew` | Pit-crew phone view (no longer linked from the pit wall) |
+| `/docs` | FastAPI API docs |
+
+### Phones on any network (Cloudflare tunnel)
+Phones normally reach the laptop over the local Wi-Fi, which fails on networks that block device-to-device traffic
+(eduroam, most venue Wi-Fi) and breaks whenever the laptop reconnects. A Cloudflare quick tunnel gives the server a
+public `https://…trycloudflare.com` address instead, and the QR codes use it automatically:
+
+```bash
+winget install --id Cloudflare.cloudflared      # once
+python -m sidewall.server.app --tunnel          # or set SIDEWALL_TUNNEL=1
+```
+
+The address appears in the console after a few seconds and changes on every start; the pit wall's QR code picks it up
+by itself (it is never cached, and re-checked every 10 s while the Driver phone panel is open). Without the tunnel,
+the QR code falls back to the laptop's local-network address. `SIDEWALL_PUBLIC_URL` overrides both.
+
+## The pit wall
+- **Banner:** the one call the crew needs (OK, MANAGE, BOX THIS LAP, BOX NOW), with its reasons and the radio message.
+  Level 1 is called ADVISE in the engine and on the phones.
+  It switches to **CRASH** or **TYRE FAILURE** when that happens.
+- **Tyres:** a top-down drawing of the car with each tyre's tile beside its own wheel. Each wheel glows in its tyre's
+  temperature colour (blue cold, green in the grip window, yellow hot, red overheating) and flashes when the tyre is
+  flagged for a flat spot, air loss or deflation. Replays show *AI estimates*; the live car shows *tyre sensors*.
+- **Track map:** the car (a hand-drawn sprite pointing along its direction of travel) on the real circuit, with a glow
+  in the call colour, pins for lock-ups, wheelspin and raised calls, and a burst where a crash happened.
+- **Risk, next second:** lock-up and wheelspin probability, grip in use, the causes with measured evidence, and advice.
+  Each box is outlined by alert level:
+
+  | Colour | When | Label |
+  |---|---|---|
+  | Red, pulsing | the event is happening, or risk ≥ 30% | HAPPENING / HIGH RISK |
+  | Orange | a pit stop is called (BOX THIS LAP or BOX NOW) | PIT STOP CALLED |
+  | Yellow | risk ≥ 10%, or raised over the last few corners | WATCH |
+
+- **Tyre life:** safe laps left (90% confidence) and the likely laps to the cliff.
+- **Log:** every call change, event, scenario result and crash, with time stamps.
+
+## Replays: real races the models never saw
+| Replay | Real outcome | What the pit wall does |
+|---|---|---|
+| British GP 2020, Hamilton, laps 20–52 | Front-left failure on the last lap; limped home on three wheels and won | BOX THIS LAP from lap 37, held to the failure on lap 52. At the failure moment the banner shows **TYRE FAILURE** and the car carries on at reduced speed, as in the telemetry. |
+| Azerbaijan GP 2021, Verstappen, laps 14–46 | Left-rear failure at over 300 km/h on lap 46; crashed out of the lead | BOX by lap 28. At the failure moment the banner shows **CRASH** and the car stops, as in the telemetry. The call names the front-right tyre, not the left-rear: the real cause (running pressure) is not visible in public data. |
+
+- Each replay uses tyre-life models **retrained without that race's season**, so the race is genuinely unseen.
+- Everything on screen uses only data available up to that moment.
+- The failure moment is found in the telemetry itself (`replay.failure_event`): the first point on the failure lap
+  where the car is at least 30% slower than on the previous lap at the same place for 3 s. If it then stops within
+  10 s, it is shown as a crash; otherwise as a tyre failure.
+- Key-moment buttons jump to the first MANAGE, first BOX and the real failure.
+
+## Drive it yourself: the live simulator
+The live car runs on the Silverstone racing line from a real F1 lap, with a physics tyre model: 3 thermal nodes per
+tyre (tread surface, carcass, inflation gas), grip that depends on temperature, pressure, wear and downforce,
+pressure from the gas law, and the sensors a real car carries (infrared tread, TPMS, wheel speed, a hub accelerometer
+for flat-spot vibration). Physics runs at 20 Hz; the full monitoring stack analyses it every 0.5 s.
+
+1. Open `/pitwall?mode=live`, press **📱 Driver phone** and scan the QR code.
+2. On the phone, tap **Take the wheel**: brake on the left, throttle on the right; steering is automatic.
+   **BOX** fits fresh tyres.
+3. The pit wall has **💥 Debris** (starts a slow puncture on a random tyre) and **↺ New tyres**.
+
+### Scenario buttons
+The phone's four scenario buttons drive the car through scripts from `simulator/scenarios.json` (shared with the
+browser simulator and the backend tests). The script takes the pedals; a script's `steer` becomes a virtual corner.
+Tap the lit button again to stop early; afterwards the phone keeps the wheel.
+
+| Button | Script | What happens | Result seen in testing |
+|---|---|---|---|
+| Lock-up | `lockup` | Three braking zones, each later; the last stamps on the brakes | Warned on the near-limit zone; lock-up caught within 0.2 s |
+| Wheelspin | `wheelspin` | Three hairpin exits, each harder; the last floors it from a standstill | Warned on the approach; wheelspin caught within 0.2 s |
+| Tyre Overheating | `corner` | Fast corners, then a long tight one past the limit | Warned about 0.2 s before the tread passed 125 °C |
+| Tyre Pressure Anomaly | `puncture` | Debris cuts a random tyre, which leaks while the car keeps racing | Air loss detected about 1.6 s after the cut |
+
+When a scenario ends, a watcher (`sidewall/sources/scenarios.py`) times the pit wall's warning against the simulator's
+own record of when the hazard happened, and the phone and the pit-wall log show, e.g., *"SIDEWALL warned 0.2 s before
+the overheating. It also warned 1 time on the approach."* The lead time is measured from the warning that runs into
+the hazard, so an earlier unrelated warning can't inflate it; a miss is reported as a miss.
+
+### Crashes
+The car crashes and stops dead when it goes **off the track** (too fast for a corner, beyond the slide limit) or a
+**tyre fails** (a tyre that has lost 40% of its air, above 80 km/h). The pit wall shows CRASH with the reason and a
+countdown, the phone shows CRASHED and vibrates, a running scenario stops, and after 8 s the car is recovered to the
+pits on fresh tyres. Tidy driving and the scenarios never crash.
+
+## How the prediction works
+```
+car data (4×/s) ─┬─> virtual tyre sensor ──────────> temperature + pressure per tyre
+                 ├─> lock-up / wheelspin model ───> calibrated % + cause + advice
+                 ├─> air-loss and flat-spot detectors (physics)
+                 └─> lap data ──> tyre-life survival models ──> safe laps left
+                                          │
+              all of it ──> tyre health 0–100 ──> OK / MANAGE / BOX ──> banner, radio, phones
+```
+
+### Models (all trained on existing public datasets)
 | Model | Data | Held-out result |
 |---|---|---|
 | Lock-up early warning | Assetto Corsa Gym, Dallara F317, 116 human stints, per-wheel slip ratio as ground truth | ROC-AUC 0.96 on unseen drivers, 0.90 on an unseen track, 0.90 on a different car. 85% caught, median 0.5 s early |
@@ -33,264 +175,95 @@ SIDEWALL watches every tyre in real time. It detects lock-ups, wheelspin, overhe
 | Slow puncture / deflation | physics: gas-mass invariant P_abs/T_abs + CUSUM | Synthetic tests: a leak is caught while the tyre warms, before raw pressure moves; heat cycles never trigger it |
 | Flat spot | locked-sliding distance + once-per-revolution vibration (order tracking) | Synthetic tests pass; there are no false alarms on pure noise |
 
-The **feature contract** (`sidewall/features.py`) is the key to going from sim to real. The detectors only ever see what a public F1 feed contains: speed, throttle, an on/off brake flag, gear, RPM and position, all at 4 Hz. Sim data is degraded to look like that. Accelerations rebuilt from position match the sim's own accelerometer with correlations of 0.97 (lateral) and 0.91 (longitudinal).
+The trained files, their sizes, checksums and rebuild commands are listed in the
+[model card](./models/weights/README.md). Each has a `*_metrics.json` beside it, and the Atlas plots them
+(`/api/metric-plots`).
 
-## Lock-up and wheelspin risk: predictive, calibrated, explained
-Each warning answers three questions: **how likely** (in the next second), **why**, and **what to do about it**.
+The **feature contract** (`sidewall/features.py`) is what takes the models from sim to real: they only ever see what a
+public F1 feed contains (speed, throttle, an on/off brake flag, gear, RPM and position, all at 4 Hz). Sim data is
+degraded to look like that. Accelerations rebuilt from position match the sim's own accelerometer with correlations of
+0.97 (lateral) and 0.91 (longitudinal).
 
-1. **Stage 1: telemetry pattern.** LightGBM on the shared telemetry features, trained without class re-weighting, so its
-   output is a real probability. On held-out driver sessions the calibration error is 0.2%: a "20%" really does lead to the
-   event about 1 time in 5. TreeSHAP splits every prediction into **Braking**, **Throttle**, **Speed & cornering**,
-   **Engine & gearing** and **Tyre heat history**. The Atlas view also summarizes those same families as a grouped
+### Lock-up and wheelspin risk: predictive, calibrated, explained
+1. **Stage 1: telemetry pattern.** LightGBM on the shared features, trained without class re-weighting so its output
+   is a real probability. On held-out driver sessions the calibration error is 0.2%: a "20%" leads to the event about
+   1 time in 5. TreeSHAP splits each prediction into **Braking**, **Throttle**, **Speed & cornering**, **Engine &
+   gearing** and **Tyre heat history**. The Atlas view also summarizes those same families as a grouped
    Stage-1 LightGBM gain plot, so the AUC cards sit next to a compact view of which telemetry factors drive lock-up
    versus wheelspin risk.
-2. **Stage 2: demand vs grip, per car.** A logistic regression adds driver demand (braking and throttle demand, cornering
-   load) and measured tyre condition (surface temperature outside the 85–115 °C window, pressure off the operating target).
-   Its coefficients read as odds ratios:
-   - **Live simulator car** (fitted on an 8-minute calibration run with mixed styles and pressure set-ups):
-     - fronts 10 °C above the window multiply lock-up odds ×14
-     - hot rears multiply wheelspin odds ×3.2
-     - each psi of low rear pressure multiplies wheelspin odds ×1.3
-     - lock-up ROC-AUC improves 0.62 → 0.78 and calibration error falls 20% → 3%
-   - **Assetto Corsa data (used for real-race replays):** lock-ups and wheelspin are driven by how the driver brakes and
-     accelerates. Tyre temperature adds almost nothing, and we report that as found.
-3. **Prevention.** The factor that dominated over the last few corners becomes a plain instruction to the driver and pit
-   crew, for example "Front-left overheating (128 °C): lift and coast before the big stops" or "More throttle than the rears
-   can put down: short-shift out of slow corners". Sustained risk raises a MANAGE call on the pit wall and the crew phones.
+2. **Stage 2: demand vs grip, per car.** A logistic regression adds driver demand and measured tyre condition (tread
+   outside the 85–115 °C window, pressure off target). On the live simulator car, fronts 10 °C above the window multiply
+   lock-up odds ×14, hot rears multiply wheelspin odds ×3.2, and each psi of low rear pressure multiplies wheelspin odds
+   ×1.3 (lock-up ROC-AUC 0.62 → 0.78, calibration error 20% → 3%). On the Assetto Corsa data, tyre temperature adds
+   almost nothing, and we report that as found.
+3. **Prevention.** The factor that dominated over the last few corners becomes an instruction, e.g. "More throttle
+   than the rears can put down: short-shift out of slow corners". Sustained risk raises a MANAGE call.
 
-`python -m sidewall.models.risk` trains both stages and writes `models/weights/risk_metrics.json` (calibration tables and
-odds ratios).
+`python -m sidewall.models.risk` trains both stages and writes `models/weights/risk_metrics.json`.
 
-## Guarding against overfitting (Tier B)
-The first version memorised races: training ROC-AUC 0.997 against 0.85 on held-out seasons. Weather columns alone
-scored 0.90 on training and 0.51 on test, because they identify individual races. `python -m sidewall.models.diagnostics`
-reproduces this. The fixes:
-- **Causal features only.** The degradation trend is refitted each lap from completed laps (it previously saw the whole stint).
-- **No race fingerprints.** Air temperature and humidity are dropped; track temperature is coarsened to 5 °C bands; an 18-inch-tyre era flag is added.
+### Tyre health and the pit call
+Each tyre's health (0–100) combines wear, cliff and failure risk, overheating, cold, air loss, flat spot and abuse, with
+bigger dangers taking bigger bites. It falls fast (about 2 s) and recovers slowly (about 20 s) so it doesn't flicker.
+Alert thresholds are the top 5% and 1% of training laps, not tuned to the demo races.
+
+### Guarding against overfitting (tyre life)
+The first version memorised races: training ROC-AUC 0.997 against 0.85 on held-out seasons; weather columns alone
+scored 0.90 on training and 0.51 on test, because they identify individual races
+(`python -m sidewall.models.diagnostics` reproduces this). The fixes:
+- **Causal features only.** The degradation trend is refitted each lap from completed laps.
+- **No race fingerprints.** Air temperature and humidity are dropped; track temperature is coarsened to 5 °C bands.
 - **Out-of-season circuit priors.** A training row never sees statistics that include its own stint.
-- **Cleaner labels.** Yellow-flag laps are not "clean", and a "cliff" shared by 3+ drivers on the same lap (traffic, weather) is dropped.
-- **All at-risk laps are kept,** including short stints (they are censored observations).
-- **Monotone constraints and model size chosen by race-grouped cross-validation.** Older tyres and faster degradation can never lower the risk.
-- **Honest replays.** Each demo replay uses a model retrained without that race's season.
+- **Cleaner labels.** Yellow-flag laps are not "clean", and a "cliff" shared by 3+ drivers on the same lap is dropped.
+- **Monotone constraints and model size chosen by race-grouped cross-validation.**
+- **Time-ordered, non-overlapping splits** (train, calibrate, test), checked in code by `assert_no_overlap`.
 
-Result: the train–test gap fell from about 0.15 to 0.05 (cliff) and from about 0.35 to 0.09 (laps-to-cliff), with test accuracy the same or better. 2022–2023 were skipped to save download time.
-## Data Sources and Evidence Limits
+Result: the train–test gap fell from about 0.15 to 0.05 (cliff) and from about 0.35 to 0.09 (laps-to-cliff), with test
+accuracy the same or better.
 
-Expected data sources include:
-
-- **FastF1 / OpenF1**: public lap, car, position, weather, tyre-stint, and race-context
-  data.
-- **Race-control/status data**: tyre, puncture, wheel, and wheel-nut event labels.
-- **Sim racing or academic telemetry**: optional higher-frequency data with per-wheel
-  slip, tyre temperatures, pressure, and wear when available.
-- **Local demos**: simulated or phone-driven inputs for driver, crew, replay, or
-  pit-wall experiences.
-
-### TyreFrame Normalization
-
-SIDEWALL maps source exports into hierarchical `TyreFrame` tables rather than one
-flat row-level join. `outputs/telemetry_output.csv` and `outputs/openf1_output.csv`
-provide public F1 macro context such as driver, elapsed time, speed, throttle, brake,
-RPM, compound, tyre life, and weather. `datasets/spa/event_windows.csv` and
-`datasets/spa/candidate_events.csv` provide simulator micro-behaviour at event/window
-level, including wheel speeds, slip proxies, pressures, and tyre temperatures when
-the simulator supplies them. `outputs/kaggle_tyre_strategy_output.csv` provides
-stint-level compound, stint length, and weather context for degradation and
-laps-to-cliff experiments.
-
-The normalization step enforces lowercase snake_case names, converts source
-timestamps into cumulative `elapsed_s`, flags unavailable public F1 tyre pressure,
-temperature, wheel-speed, and slip channels as `estimated_via_twin = True`, and keeps
-macro lap/stint context separate from high-frequency simulator windows to avoid
-leakage between neighbouring braking zones.
-
-```bash
-uv run python datasets/normalize_tyreframe.py
+## Repository layout
+```
+sidewall/                 the full-stack app
+  server/app.py           FastAPI: pages, APIs, WebSockets, live session, QR codes
+  server/tunnel.py        optional Cloudflare quick tunnel for phones
+  server/feedback.py      runtime feedback loop (see below)
+  server/jobs.py          background jobs (replay rebuilds, feedback)
+  sources/sim.py          live simulator physics, sensors and crashes
+  sources/live.py         live session: 20 Hz physics loop, 0.5 s analysis loop, driver control
+  sources/scenarios.py    scenario-button scripts and the warning-lead watcher
+  sources/replay.py       real-race replays and failure detection
+  engine/monitor.py       runs every model on a stream and fuses them into frames
+  engine/health.py        tyre health index and pit call
+  models/                 event detectors, risk, grip, flat spot, tyre life, labels, diagnostics
+  twin/                   virtual TPMS and gas-law pressure / leak detection
+  data/                   FastF1 and Assetto Corsa ingest, stints, atlas
+web/                      pit wall, driver phone, crew phone, atlas, home page, images
+models/weights/           trained models + metrics + model card
+simulator/                browser simulator and scenarios.json (shared scripts)
+backend/, dashboard/      lower-level simulator pipeline (see below)
+training/                 laps-remaining model for the lower-level backend
+datasets/                 dataset extraction and TyreFrame normalisation
+tests/, backend/tests/    test suites
 ```
 
-The command writes hierarchical CSVs under `outputs/tyreframe/`: `macro_telemetry`,
-`macro_laps`, `stints`, `candidate_events`, `micro_event_windows`, and a row-count
-`manifest`. Use chronological or circuit/session-level splits for training rather
-than random row splits when building lock-up, wheelspin, or cliff-forecast models.
+## API
+| Route | Purpose |
+|---|---|
+| `GET /health`, `GET /api/model/status` | Service health; model path, source, metrics and evidence limits |
+| `GET /api/scenarios`, `GET /api/replay/{key}` | Replay list; frames, track and failure event for one replay |
+| `POST /api/predict/laps` | Estimated laps remaining for one compound / age / track-temperature state |
+| `POST /api/jobs/replay`, `POST /api/jobs/feedback` | Queue heavy work; returns a job id with `202 Accepted` |
+| `GET /api/jobs/{job_id}`, `GET /api/jobs/{job_id}/result` | Poll a job and read its result |
+| `GET /api/feedback/status` | Feedback-loop state |
+| `GET /api/metrics`, `GET /api/metric-plots`, `GET /api/atlas` | Model metrics, the Atlas plots and circuit data |
+| `POST /api/live/start`, `/stop`, `/reset`, `/debris` | Control the live simulator |
+| `GET /api/qr?path=/driver`, `GET /api/lan` | QR code and the address phones should open |
+| `WS /ws/pitwall`, `/ws/driver`, `/ws/crew` | Live state and analysed frames; phone controls (`claim`, `release`, `input`, `box`, `scenario`, `scenario_stop`) |
 
-For the checked-in local extracts used on this branch, reproducibility means the
-source and normalized row counts should remain stable unless an extraction is
-intentionally refreshed. After running the command above, verify
-`outputs/tyreframe/manifest.csv` against these expected counts:
+Replay rebuilds go through `/api/jobs/replay`; `/api/replay/{key}?rebuild=true` is rejected so heavy work doesn't block
+requests.
 
-| Manifest record | Expected rows |
-|---|---:|
-| `source_table: fastf1` | 70,801 |
-| `source_table: openf1` | 123,156 |
-| `source_table: stints` | 1,010 |
-| `source_table: candidate_events` | 5 |
-| `source_table: event_windows` | 1,334 |
-| `output_table: macro_telemetry` | 193,957 |
-| `output_table: macro_laps` | 210 |
-| `output_table: stints` | 1,010 |
-| `output_table: candidate_events` | 5 |
-| `output_table: micro_event_windows` | 1,334 |
-| `total: source_records` | 196,306 |
-| `total: output_records` | 196,516 |
-
-If these totals change, document why in the same change as the data refresh or
-normalization update.
-
-### Target Open Datasets and APIs
-
-| Source | Access | Useful fields | SIDEWALL use |
-|---|---|---|---|
-| **FastF1 Python library / data API** | GitHub `theOehrly/Fast-F1` or PyPI package `fastf1` | `Speed`, `Throttle`, `Brake`, `RPM`, `Gear`, `TrackTemp`, `AirTemp`, lap and stint context | Primary public telemetry source for replay, braking-zone analysis, tyre-stint context, weather context, and fuel-adjusted lap-time modelling. |
-| **OpenF1 API** | `https://openf1.org` | Historical and live JSON/CSV streams for speed, throttle, RPM, timing intervals, session context | API-friendly telemetry source for live-ish demos, driver-specific timing, micro-sector deltas, and acceleration-drop analysis. |
-| **Kaggle F1 tyre strategy datasets** | Search Kaggle for F1 tyre strategy datasets such as `F1-Tyre-Strategy-Engine` projects | `Compound`, `StintLength`, aggregated `AirTemp`, `TrackTemp`, stint summaries | Tabular ML starting point for tyre degradation, stint-length, compound, and environmental feature experiments. |
-
-Known useful Kaggle targets:
-
-- `navenkumar1998/formula-1-dataset-with-weather-and-tyre-features`: primary Kaggle
-  target for SIDEWALL stint and degradation experiments. It is lap-level and includes
-  tyre/stint features such as compound, tyre life, fresh tyre, and stint, plus weather
-  context such as air temperature, track temperature, rainfall, humidity, and wind.
-
-Be precise about what the data can prove:
-
-- Public FastF1 telemetry can support a **possible lock-up** or **braking anomaly**
-  flag, but it cannot directly confirm individual wheel lock-up.
-- Standard FastF1 telemetry does not directly provide tyre pressure, tyre temperature,
-  actual fuel mass, or individual wheel rotation speed.
-- Tyre state inferred from public telemetry must be labelled as `estimated`,
-  `possible`, or `candidate` unless another source directly measures it.
-- Visual cues such as smoke are reviewer evidence, not automatic confirmation.
-
-## Candidate Models
-
-These models are initial targets for the datasets above. Implement them test-first and
-document each model's inputs, assumptions, limitations, and verification command as the
-code lands.
-
-### Bayesian State-Space Degradation Model
-
-**Goal:** isolate tyre wear from confounders such as fuel burn and pit-stop resets.
-
-Raw lap times often improve early in a race as cars lose fuel mass. A state-space model
-should use lap-time evolution, stint boundaries, pit stops, compound, track
-temperature, and air temperature to estimate latent tyre pace. The useful output is not
-just a pace prediction, but a signal that identifies when observed degradation departs
-from expected tyre behaviour.
-
-Expected outputs:
-
-- Estimated latent tyre pace or degradation state.
-- Uncertainty around the estimated state.
-- Human-readable reason text for degradation anomalies.
-- Clear separation between fuel-adjusted pace estimates and directly measured data.
-
-### Deceleration / Braking Anomaly Classifier
-
-**Goal:** flag possible wheel lock-ups, tyre slides, or flat-spotting risk moments for
-human review.
-
-Using public telemetry, start with speed and brake traces around heavy braking zones.
-Feature candidates include deceleration shape, speed-drop gradient, brake-on duration,
-corner/location context, tyre age, compound, and track conditions. Simple thresholds or
-unsupervised models such as Isolation Forests are acceptable starting points before
-more complex classifiers.
-
-Expected outputs:
-
-- `possible_lockup` or `braking_anomaly` style labels, not confirmed lock-up labels
-  unless direct wheel-speed or reviewed visual evidence is available.
-- Explanation fields describing which telemetry signals triggered the flag.
-- False-positive checks on normal heavy braking zones.
-- Regression tests for alert wording and evidence level.
-
-## Development Workflow
-
-Use test-driven development for meaningful logic changes:
-
-1. Write or update a focused failing test for the intended behaviour.
-2. Implement the smallest useful change.
-3. Run the focused test.
-4. Refactor with tests passing.
-5. Update docs, schemas, examples, and coverage notes before the change is complete.
-
-Documentation is part of the development loop. When behaviour, commands, data
-contracts, alert wording, model assumptions, or demo flows change, update this README
-or the relevant local docs in the same pass.
-
-## Testing Expectations
-
-- Prefer synthetic, anonymized, minimal fixtures for tests.
-- Do not require raw downloaded race data for unit tests.
-- For diagnosis logic, test both the decision and the explanation shown to users.
-- For public-telemetry-only lock-up logic, tests should assert wording such as
-  `possible lock-up`, `braking anomaly`, or `candidate`, not confirmed lock-up.
-- When coverage is run, update the relevant `TEST_COVERAGE.md` file with the command
-  and observed percentage.
-
-## Setup
-
-This project uses Python 3.13 or newer for the main SIDEWALL app. The easiest
-reproducible setup is with `uv`:
-
-```bash
-uv sync
-```
-
-If `uv` is not available, create a virtual environment and install the pinned runtime
-requirements:
-
-```bash
-python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt
-```
-
-On macOS/Linux, replace `.venv/Scripts/python` with `.venv/bin/python`.
-
-## Start the Full-Stack App
-
-The recommended full-stack entrypoint is `sidewall.server.app`. It serves the
-FastAPI backend, model APIs, WebSocket relay, static browser UI, pit-wall dashboard,
-crew phone, driver phone controller, live simulator, replay mode, and atlas from one
-process on port 8000.
-
-```bash
-uv run python -m sidewall.server.app
-```
-
-Without `uv`:
-
-```bash
-.venv/Scripts/python -m sidewall.server.app
-```
-
-Then open:
-
-- `http://localhost:8000/` - landing page with all demo paths.
-- `http://localhost:8000/pitwall?mode=replay` - replay a real race scenario.
-- `http://localhost:8000/pitwall?mode=live` - run the live phone-driven simulator
-  and pit-wall frontend.
-- `http://localhost:8000/crew` - pit-crew phone view.
-- `http://localhost:8000/driver` - phone throttle/brake controller.
-- `http://localhost:8000/atlas` - tyre-safety data atlas.
-- `http://localhost:8000/docs` - FastAPI API docs.
-
-For the live demo, start the server on the laptop, open `/pitwall?mode=live`, then use
-the QR buttons on the pit wall to connect phones on the same Wi-Fi. The server binds to
-`0.0.0.0` and `/api/qr` generates LAN URLs for `/crew` and `/driver`.
-
-If you see a page that says **Backend offline**, you are probably on the older
-`simulator/` or `dashboard/` UI. The full-stack app's live frontend is
-`http://localhost:8000/pitwall?mode=live`.
-
-Useful health checks:
-
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/api/model/status
-```
-
-If you want to regenerate the checked-in demo data and model artifacts before serving,
-run the pipeline in this order:
+## Rebuilding the data and models
+Not needed to run the app. To regenerate everything (downloads and refreshes external data):
 
 ```bash
 uv run python -m sidewall.data.ingest_fastf1 --telemetry
@@ -298,39 +271,24 @@ uv run python -m sidewall.data.ingest_acgym
 uv run python -m sidewall.data.build_stints
 uv run python -m sidewall.models.event_detectors --rebuild
 uv run python -m sidewall.twin.virtual_tpms
+uv run python -m sidewall.models.risk
 uv run python -m sidewall.models.tyre_life
 uv run python -m sidewall.data.build_atlas
 ```
 
-Those commands may download or refresh external data. The repository already includes
-demo outputs and model weights for local startup, so you do not need to run the data
-pipeline just to try the app.
-
 ### Notes for troubleshooting
+The replays need the 2020 and 2021 FastF1 data (`SCENARIOS` in `sidewall/sources/replay.py`). If it is missing, run:
 
-Make sure these datasets are installed:
-```python
-SCENARIOS = {
-    "silverstone2020": Scenario(
-        "silverstone2020", "British GP 2020: Hamilton's front-left", 2020, 4, "HAM", 20, 52,
-        "Front-left tyre failed on the final lap after a ~40-lap stint on hards; won on three wheels.",
-        failure_lap=52),
-    "baku2021": Scenario(
-        "baku2021", "Azerbaijan GP 2021: Verstappen's left-rear", 2021, 6, "VER", 14, 46,
-        "Left-rear failed at ~300 km/h on lap 46 while leading; Pirelli blamed low running pressures.",
-        failure_lap=46),
-    "silverstone2020_whatif": Scenario(
-        "silverstone2020_whatif", "What-if: slow puncture injected (Silverstone 2020)", 2020, 4, "HAM", 20, 40,
-        "Synthetic: a 0.8 %/min leak is injected on the front-left TPMS channel at lap ~24 to show the "
-        "temperature-independent leak detector. Not real data.",
-        leaks={"fl": (400.0, 0.008)}),
-}
-```
-If not installed, run the following scripts from the root of this repository: 
 ```bash
 uv run python -m sidewall.data.ingest_fastf1 --years 2020 2021 --telemetry
 uv run python -m sidewall.data.build_stints
 ```
+
+- A phone can't open the driver page: use the tunnel (above), or put the laptop and phone on the same network that
+  allows device-to-device traffic (a phone hotspot works; eduroam usually doesn't). Keep the link `http://` without the
+  tunnel.
+- A page looks out of date: hard-refresh with Ctrl+Shift+R.
+- A page says **Backend offline**: you are on the lower-level `simulator/` or `dashboard/` UI, not the full app.
 
 ### Feedback Loop
 Check [feedback.py](./sidewall/server/feedback.py). Diagram as shown below:
@@ -342,114 +300,86 @@ Tests:
 uv run pytest -q
 ```
 
-## Demo (about 4 minutes)
-1. **Ghost of Silverstone 2020.** Replay Hamilton's stint at 20× with the Radio switch on and a judge's phone on the Crew QR code. The model has **never seen 2020**. The call reaches ADVISE on lap 36, BOX on lap 40 and sustained BOX from lap 44, eight laps before the real front-left failure on lap 52; failure risk hits the top 1% on lap 49, when Bottas and Sainz failed. Everything on screen uses only data available up to that moment.
-2. **"Drive it yourself."** Pick *LIVE*; a judge scans the Driver QR code and uses the phone pedals. Braking late gives a lock-up (the phone buzzes) and then a flat spot. Flooring it out of slow corners gives wheelspin. **💥 Debris** starts a slow puncture, and the air-loss detector catches it while the raw pressure still looks normal. The crew phone flashes BOX.
-3. **Atlas.** Circuits ranked by data-driven stint cap, survival curves, degradation per season, failures by tyre age and the model scorecard.
+## Testing
+```bash
+uv run pytest -q                  # everything (284 tests)
+uv run pytest -q tests            # full app: detectors, sim physics, scenarios, crashes, server API, splits
+uv run pytest -q backend/tests    # lower-level backend
+```
 
-## Honest limitations
-- Public F1 data has **no tyre pressure, temperature or wheel speed**. Temperatures and pressures in replays are *estimates* from the virtual TPMS, calibrated on an F3-class sim. Leaks appear in replays only in the clearly labelled what-if scenario.
-- The ML lock-up detector learned the Dallara's lock-up signature. In the live sim the car also has wheel-speed sensors (as real race cars do), and the dashboard shows which source fired: `wheel-speed`, `AI` or `sensor+AI`.
-- There are few tyre failures in public data, so the failure hazard is weak. Alerts use percentile thresholds (top 5% / top 1% of training laps) rather than being tuned to the demo races.
+Tests use synthetic, minimal fixtures and don't need raw race data; a few that read the cached replays skip when they
+are absent.
 
-## Data sources
-FastF1 (MIT), OpenF1, Jolpica/Ergast, Assetto Corsa Gym (CC-BY-4.0, only `.ld` logs are loaded, never `.pkl` pickles), THULab/Nasim435 Spa telemetry (MIT).
-Extract downloaded Kaggle F1 tyre strategy CSVs, or a Kaggle dataset slug if the
-Kaggle CLI is installed and authenticated:
+## Lower-level simulator pipeline
+An older, lightweight pipeline kept for testing the raw browser simulator against a small backend. Most users should
+use the full app above. Message formats are in `contracts.md`.
+
+- `simulator/`: drivable browser car; sends raw sensor frames.
+- `backend/`: feature extraction, detectors, alert engine, health index and laps estimate
+  (`backend/scenarios.py` runs the scenarios headless).
+- `dashboard/`: shows the backend's analysed frames.
+- `training/`: the laps-remaining model (`training/train.py`, chronological 60/20/20 race split, tuned on validation,
+  scored once on test) saved to `training/laps_model.joblib`.
+
+```bash
+uv run uvicorn backend.main:app --reload --port 8001
+python -m http.server 5500
+```
+
+Then open `http://localhost:5500/simulator/?backend=localhost:8001` and
+`http://localhost:5500/dashboard/?backend=localhost:8001`.
+
+## Dataset processing (TyreFrame)
+`datasets/normalize_tyreframe.py` maps source exports into hierarchical `TyreFrame` tables: public F1 macro context
+(`outputs/telemetry_output.csv`, `outputs/openf1_output.csv`), simulator event windows (`datasets/spa/`) and stint-level
+Kaggle data (`outputs/kaggle_tyre_strategy_output.csv`). It enforces snake_case names and cumulative `elapsed_s`, flags
+tyre channels that public F1 data lacks as `estimated_via_twin = True`, and keeps lap/stint context apart from
+high-frequency windows to avoid leakage.
+
+```bash
+uv run python datasets/normalize_tyreframe.py
+```
+
+It writes `outputs/tyreframe/` (`macro_telemetry`, `macro_laps`, `stints`, `candidate_events`, `micro_event_windows`,
+`manifest`). The checked-in extracts should reproduce 196,306 source records and 196,516 output records in
+`manifest.csv`; if these change, document why in the same change. Kaggle strategy data can be extracted with:
 
 ```bash
 uv run python datasets/extract_kaggle_tyre_strategy.py --input data/raw/f1_strategy
 uv run python datasets/extract_kaggle_tyre_strategy.py --kaggle-dataset navenkumar1998/formula-1-dataset-with-weather-and-tyre-features
 ```
 
-If `uv` is not available, install dependencies with your preferred Python environment
-manager using `pyproject.toml` as the source of truth.
+See `datasets/README.md` and the `datasets/FINDINGS_*.md` notes for what each source contains.
 
-## Lower-Level Simulator Pipeline
+## Honest limitations
+- Public F1 data has **no tyre pressure, temperature or wheel speed**. Temperatures and pressures in replays are
+  *estimates* from the virtual TPMS, calibrated on an F3-class sim, and labelled as such. Replays never show a leak;
+  the air-loss detector is shown in the live simulator (Debris, or the Tyre Pressure Anomaly scenario).
+- The lock-up and wheelspin models learned from a Dallara F317 in Assetto Corsa, not an F1 car. In the live sim the
+  car also has wheel-speed sensors, and the dashboard shows which source fired: `wheel-speed`, `AI` or `sensor+AI`.
+- There are few tyre failures in public data (60, 15 official), so the failure hazard is weak; the cliff model and the
+  air-loss detector carry the safety calls.
+- In Baku 2021 the BOX call names the wrong tyre: the real cause (running pressure) is not visible in public data.
+- In the live simulator the wheelspin risk rests at about 20–35% during tidy driving, so it shows MANAGE more often
+  than it should.
+- Scenario lock-ups and wheelspin come from instantaneous inputs (stamping, flooring it), so they are caught just after
+  they start; the early warning is on the approach. During a scenario, the tyres follow the script's virtual straights
+  and corners while the car on the map keeps going round the real circuit.
 
-Most users should start the full app with `uv run python -m sidewall.server.app`.
-The repository also keeps an older, lower-level simulator pipeline for testing the raw
-browser simulator against the lightweight backend directly.
+## Data sources
+FastF1 (MIT), OpenF1, Jolpica/Ergast, Assetto Corsa Gym (CC-BY-4.0; only `.ld` logs are loaded, never `.pkl` pickles),
+THULab/Nasim435 Spa telemetry (MIT), Kaggle F1 tyre-strategy data.
 
-Browser simulator -> FastAPI backend -> pit-wall dashboard, over WebSockets at 10 Hz.
-Message formats are specified in `contracts.md`. Tyre temperatures and pressures here
-are simulated, not real.
+## Project hygiene
+- Don't commit credentials, private tokens, raw large datasets or generated caches (`data/` is ignored). Model files in
+  `models/weights/` are committed deliberately; load `.joblib` files only from this repository.
+- Use relative paths or configuration, not hard-coded local paths.
+- Record seeds, commands and data-source assumptions for reproducible experiments.
+- Keep alert wording honest about uncertainty and evidence level.
 
-- `simulator/` - drivable browser car; sends raw sensor frames only.
-- `backend/` - feature extraction, detectors, alert engine, Tyre Health Index, and
-  laps estimate.
-- `dashboard/` - displays analysed backend output frames only.
-- `training/` - offline laps model scripts. `training/train.py` saves
-  `training/laps_model.joblib`, which the lightweight backend loads.
-- `backend/scenarios.py` - runs the demo scenarios headless through the backend.
-
-Run it with two terminals from the repository root:
-
-```bash
-uv run uvicorn backend.main:app --reload --port 8001
-```
-
-```bash
-python -m http.server 5500
-```
-
-Then open both browser pages:
-
-- `http://localhost:5500/simulator/?backend=localhost:8001` - sends raw simulated
-  tyre sensor frames to `ws://localhost:8001/ws/sim`.
-- `http://localhost:5500/dashboard/?backend=localhost:8001` - dashboard UI that reads
-  analysed frames from `ws://localhost:8001/ws/dash`.
-
-The dashboard will show **Backend offline** until `backend.main` is running and the
-`backend=localhost:8001` query parameter points at the same port. After the dashboard
-connects, it may still say it is waiting for frames until the simulator page is open
-and sending data.
-
-Backend-specific tests:
-
-```bash
-uv run pytest -q backend/tests
-```
-
-## Model Serving API
-
-The SIDEWALL server also exposes the tyre-life model as a low-latency FastAPI surface.
-Small predictions stay on the API path, while replay rebuilds and heavier analytics are
-queued for a background worker so the API can respond immediately.
-
-```bash
-uv run python -m sidewall.server.app
-```
-
-- `GET /health` - service health and active laps-model source.
-- `GET /api/model/status` - model path, source, bundle metadata, CV metrics, and evidence limits.
-- `POST /api/predict/laps` - estimated laps remaining for one compound/age/track-temperature state.
-- `POST /api/jobs/replay` - enqueue replay analytics and return a job id with `202 Accepted`.
-- `GET /api/jobs/{job_id}` - poll queued/running/succeeded/failed status.
-- `GET /api/jobs/{job_id}/result` - read the completed replay result.
-
-Replay rebuilds should use `/api/jobs/replay`; direct `/api/replay/{key}?rebuild=true`
-is rejected so parquet/model-heavy work does not block the request path.
-
-## Project Hygiene
-
-- Do not commit credentials, private tokens, raw large datasets, generated caches, or
-  model checkpoints.
-- Keep FastF1 caches and generated outputs out of reviewed application logic unless
-  the code explicitly documents how they are produced.
-- Use relative paths or configuration instead of hard-coded local paths.
-- Record seeds, commands, and data-source assumptions for reproducible experiments.
-- Keep alert copy honest about uncertainty and evidence level.
-
-## Related Docs
-
-- `TRACKS.md` - hackathon track summary.
-- `.github/skills/AGENTS.md` - shared agent-facing repository guidance.
-- `.github/instructions/copilot-instructions.md` - GitHub Copilot-specific
-  instructions.
-- `.agents/skills/` - local skills for testing, data pipeline, modelling, training,
-  evaluation, notebooks, and repo guidance.
-
-Different assistants should keep their runtime-specific instructions in their own
-conventional directories or files, then refer back to the shared docs above for
-repository facts, safety limits, data-source assumptions, and development workflow.
+## Related docs
+- `TRACKS.md`: the hackathon tracks.
+- `contracts.md`: message formats for the lower-level pipeline.
+- `models/weights/README.md`: the model card.
+- `.github/skills/AGENTS.md`, `.github/instructions/copilot-instructions.md`, `.agents/skills/`: guidance for coding
+  assistants.
