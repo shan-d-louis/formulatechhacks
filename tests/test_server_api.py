@@ -49,7 +49,14 @@ def test_metric_plots_exposes_chart_ready_series():
 
     assert response.status_code == 200
     body = response.json()
-    assert {"tierA", "tierB", "cliffCalibration", "riskReliability", "virtualTpms"} <= set(body)
+    assert {
+        "tierA",
+        "tierB",
+        "cliffCalibration",
+        "riskReliability",
+        "riskFactorAnalytics",
+        "virtualTpms",
+    } <= set(body)
     assert body["tierA"]["points"]
     assert {"event", "split", "roc_auc", "pr_auc"} <= set(body["tierA"]["points"][0])
     assert body["tierB"]["points"]
@@ -57,6 +64,14 @@ def test_metric_plots_exposes_chart_ready_series():
     assert body["virtualTpms"]["points"]
     assert {"target", "wheel", "mae_c", "baseline_mae_c"} <= set(
         body["virtualTpms"]["points"][0]
+    )
+    assert body["riskFactorAnalytics"]["stage1FamilyGain"]
+    assert {"event", "family", "share", "gain"} <= set(
+        body["riskFactorAnalytics"]["stage1FamilyGain"][0]
+    )
+    assert body["riskFactorAnalytics"]["stage2Terms"]
+    assert {"source", "event", "term", "family", "odds_ratio"} <= set(
+        body["riskFactorAnalytics"]["stage2Terms"][0]
     )
 
 
