@@ -1,6 +1,6 @@
 # Lightning Response: AI tyre-safety pit wall
 
-**FormulaTech Hacks: Track 1 (Safety Diagnosis) · Ollon (Data-Driven Motorsport Safety) · Ampere (AI for Motorsport Safety)**
+**FormulaTech Hacks: Ollon Track Winner for Data-Driven Motorsport Safety**
 
 Lightning Response watches every tyre on a race car, predicts trouble before it happens, explains why, and tells the
 pit wall what to do: **OK, MANAGE, BOX THIS LAP or BOX NOW**.
@@ -462,3 +462,14 @@ THULab/Nasim435 Spa telemetry (MIT), Kaggle F1 tyre-strategy data.
 - `models/weights/README.md`: the model card.
 - `.github/skills/AGENTS.md`, `.github/instructions/copilot-instructions.md`, `.agents/skills/`: guidance for coding
   assistants.
+
+## Project Images
+
+### HomePage
+<img width="1917" height="1078" alt="mcqueen1" src="https://github.com/user-attachments/assets/17ba967e-227b-4a89-bd62-09567164c3ee" />
+
+### Live Race Simulations
+<img width="1917" height="1078" alt="mcqueen2" src="https://github.com/user-attachments/assets/f6d3243e-c51e-4784-97f1-2476a84e3e21" />
+
+### Data Page (for the curious minds)
+<img width="1917" height="1078" alt="mcqueen2" src="https://github.com/user-attachments/assets/2f16fec8-9986-4d7d-86aa-c36a82014954" />
