@@ -92,6 +92,16 @@
         <canvas id="tpmsPlot"></canvas>
         <p class="model-note" id="tpmsNote">Leave-track-out model error versus a naive median baseline.</p>
       </div>
+      <div class="panel" style="background:var(--panel-2)">
+        <h3>TreeSHAP factor families</h3>
+        <canvas id="shapPlot"></canvas>
+        <p class="model-note" id="shapNote">Stage-1 telemetry model importance, grouped with the same factor families used in live risk explanations.</p>
+      </div>
+      <div class="panel" style="background:var(--panel-2)">
+        <h3>Demand vs grip odds</h3>
+        <canvas id="oddsPlot"></canvas>
+        <p class="model-note" id="oddsNote">Stage-2 logistic terms show how driver demand, tyre temperature, and pressure recalibrate the TreeSHAP telemetry pattern.</p>
+      </div>
     </div>
   </div>
 </main>
@@ -194,6 +204,25 @@ function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
     { label: "baseline MAE C", values: core.map((p) => p.baseline_mae_c), bars: true, color: "#ff2a4b" },
   ], { xs: core.map((p) => p.wheel), xlabel: "wheel" });
   $("tpmsNote").textContent = `Core temperature error by wheel; pressure derived via gas law has ${f(plots.virtualTpms.pressure_from_gas_law_mae_psi)} psi MAE.`;
+
+  const shap = plots.riskFactorAnalytics.stage1FamilyGain || [];
+  const shapFamilies = ["Braking", "Throttle", "Speed & cornering", "Engine & gearing", "Tyre heat history"];
+  chart($("shapPlot"), ["lockup", "wheelspin"].map((event, i) => ({
+    label: event,
+    values: shapFamilies.map((family) => shap.find((p) => p.event === event && p.family === family)?.share),
+    bars: true,
+    color: COLORS[i === 0 ? 0 : 3],
+  })), { xs: shapFamilies.map((name) => name.replace(" & ", " + ")), ymax: 1, xlabel: "factor family" });
+  $("shapNote").textContent = "Grouped Stage-1 LightGBM gain mirrors the TreeSHAP families shown in live lock-up and wheelspin explanations.";
+
+  const odds = (plots.riskFactorAnalytics.stage2Terms || [])
+    .filter((p) => p.source === "sim" && p.term !== "ml_logit")
+    .sort((a, b) => Math.abs(Math.log(b.odds_ratio || 1)) - Math.abs(Math.log(a.odds_ratio || 1)))
+    .slice(0, 8);
+  chart($("oddsPlot"), [
+    { label: "odds ratio", values: odds.map((p) => p.odds_ratio), bars: true, color: "#ffc233" },
+  ], { xs: odds.map((p) => `${p.event} ${p.term}`), ymax: Math.max(2, ...odds.map((p) => p.odds_ratio || 0)) * 1.1, hline: 1, xlabel: "sim calibration" });
+  $("oddsNote").textContent = "Above 1 raises one-second event odds; below 1 reduces them. Sim terms are shown because that is the live demo car.";
   return;
 
   const A = m.tierA ? m.tierA.events : {}, B = m.tierB || {}, T = m.twin || {};

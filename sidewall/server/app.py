@@ -25,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 
 from sidewall import config
 from sidewall.engine.monitor import load_bundles
+from sidewall.models.risk import DEMAND, FACTORS, TYRE, feature_family
 from sidewall.server import feedback
 from sidewall.server.jobs import JOBS, JobRecord
 from sidewall.server.utils import short_git_hash
@@ -320,6 +321,62 @@ def _point(label: str, value: Any) -> dict[str, Any]:
     return {"label": label, "value": value if isinstance(value, (int, float)) else None}
 
 
+def _risk_factor_analytics(risk_metrics: dict[str, Any]) -> dict[str, Any]:
+    """Return chart-ready risk factor summaries from the trained explainability stack."""
+
+    bundle = BUNDLES.get("risk") or {}
+    features = bundle.get("features", [])
+    stage1 = bundle.get("stage1", {})
+    phase = {"lockup": {"Throttle": "Braking"}, "wheelspin": {"Braking": "Throttle"}}
+    family_points = []
+    for event, model in stage1.items():
+        gain_by_family = {name: 0.0 for name in FACTORS}
+        importances = model.booster_.feature_importance("gain")
+        for feature, gain in zip(features, importances):
+            family = phase.get(event, {}).get(feature_family(feature), feature_family(feature))
+            gain_by_family[family] = gain_by_family.get(family, 0.0) + float(gain)
+        total = sum(gain_by_family.values())
+        for family, gain in gain_by_family.items():
+            family_points.append(
+                {
+                    "event": event,
+                    "family": family,
+                    "share": gain / total if total else None,
+                    "gain": gain,
+                }
+            )
+
+    stage2_terms = []
+    term_families = {
+        event: dict(DEMAND[event] + TYRE)
+        for event in ("lockup", "wheelspin")
+    }
+    for source, source_report in risk_metrics.items():
+        for event, report in source_report.items():
+            odds = report.get("odds_ratios", {})
+            for term, ratio in odds.items():
+                if term == "ml_logit":
+                    family = "Telemetry pattern"
+                else:
+                    family = term_families.get(event, {}).get(term, term)
+                stage2_terms.append(
+                    {
+                        "source": source,
+                        "event": event,
+                        "term": term,
+                        "family": family,
+                        "odds_ratio": ratio,
+                    }
+                )
+
+    return {
+        "title": "Risk TreeSHAP factor families",
+        "stage1FamilyGain": family_points,
+        "stage2Terms": stage2_terms,
+        "basis": "Stage-1 LightGBM feature gain grouped with the same families used for per-frame TreeSHAP explanations; Stage-2 odds ratios come from grouped cross-validation metrics.",
+    }
+
+
 @app.get("/api/metric-plots")
 def metric_plots():
     """Return chart-ready aggregate evaluation series for the Atlas UI."""
@@ -415,6 +472,7 @@ def metric_plots():
             "points": calibration_points,
         },
         "riskReliability": {"title": "Risk calibration reliability", "series": reliability},
+        "riskFactorAnalytics": _risk_factor_analytics(risk),
         "virtualTpms": {
             "title": "Virtual TPMS leave-track-out error",
             "pressure_from_gas_law_mae_psi": twin.get("pressure_from_gas_law_mae_psi"),

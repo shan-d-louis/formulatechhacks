@@ -41,7 +41,9 @@ Each warning answers three questions: **how likely** (in the next second), **why
 1. **Stage 1: telemetry pattern.** LightGBM on the shared telemetry features, trained without class re-weighting, so its
    output is a real probability. On held-out driver sessions the calibration error is 0.2%: a "20%" really does lead to the
    event about 1 time in 5. TreeSHAP splits every prediction into **Braking**, **Throttle**, **Speed & cornering**,
-   **Engine & gearing** and **Tyre heat history**.
+   **Engine & gearing** and **Tyre heat history**. The Atlas view also summarizes those same families as a grouped
+   Stage-1 LightGBM gain plot, so the AUC cards sit next to a compact view of which telemetry factors drive lock-up
+   versus wheelspin risk.
 2. **Stage 2: demand vs grip, per car.** A logistic regression adds driver demand (braking and throttle demand, cornering
    load) and measured tyre condition (surface temperature outside the 85–115 °C window, pressure off the operating target).
    Its coefficients read as odds ratios:
