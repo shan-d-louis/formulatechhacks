@@ -31,7 +31,8 @@ def reset_tires() -> None:
     """Fresh tires fitted: forget all per-tire history."""
     global _last_stint
     for st in tire_states.values():
-        for alert_id in (st.lockup.alert_id, st.wheelspin.alert_id, st.overheat_alert_id, st.pressure_alert_id):
+        for alert_id in (st.lockup.alert_id, st.wheelspin.alert_id, st.lockup_risk.alert_id, st.wheelspin_risk.alert_id,
+                         st.overheat_alert_id, st.pressure_alert_id):
             alert_log.finalize(alert_id)  # close (and unpin) anything cut short by the tire change
         st.reset()
     alert_log.close_all()  # nothing on the old set is active any more
@@ -86,9 +87,13 @@ def process(raw: dict) -> dict:
         st.temp_slope = f["temp_slope"]
 
         if corner in config.FRONTS:
+            r = detectors.detect_lockup_risk(st, f["slip_ratio"], raw["brake"], raw["speed_kph"], raw["t"])
+            alerts.track_slip_event(alert_log, st.lockup_risk, "lockup_risk", corner, r, int(raw["lap"]), raw["t"])
             r = detectors.detect_lockup(st, f["slip_ratio"], raw["brake"], raw["speed_kph"], raw["t"])
             alerts.track_slip_event(alert_log, st.lockup, "lockup", corner, r, int(raw["lap"]), raw["t"])
         if corner in config.REARS:
+            r = detectors.detect_wheelspin_risk(st, f["slip_ratio"], raw["throttle"], raw["speed_kph"], raw["t"])
+            alerts.track_slip_event(alert_log, st.wheelspin_risk, "wheelspin_risk", corner, r, int(raw["lap"]), raw["t"])
             r = detectors.detect_wheelspin(st, f["slip_ratio"], raw["throttle"], raw["speed_kph"], raw["t"])
             alerts.track_slip_event(alert_log, st.wheelspin, "wheelspin", corner, r, int(raw["lap"]), raw["t"])
 

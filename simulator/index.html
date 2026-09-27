@@ -54,6 +54,10 @@
   .drive[data-ctl="brake"].held { background:rgba(255,93,93,.22); border-color:var(--bad); }
   .drive[data-ctl="left"].held, .drive[data-ctl="right"].held { background:rgba(78,161,255,.22); border-color:var(--acc); }
   @media (max-width:560px) { .controls { grid-template-columns:1fr; } .drive { min-height:90px; } }
+  .controls.autopilot .drive { opacity:.35; pointer-events:none; }
+  .autopilot-note { color:var(--amber); font-size:13px; font-weight:600; text-align:center; }
+  aside button:disabled { opacity:.5; cursor:not-allowed; }
+  #scriptStatus { color:var(--amber); }
 
   /* Car view: small top-down view of the car on a moving road (display only) */
   .mini { position:absolute; top:12px; left:16px; width:220px; height:160px; border:1px solid var(--line); border-radius:10px;
@@ -133,6 +137,7 @@
     <span>Steer</span><div class="bar"><div id="barStr" style="background:var(--acc); position:absolute; left:50%"></div></div>
   </div>
 
+  <div class="autopilot-note" id="autopilotNote" hidden>Scenario driving the car · buttons paused · Esc to cancel</div>
   <div class="controls">
     <div class="cluster">
       <button class="drive" data-ctl="left" aria-pressed="false">◀ Left<small>A / ←</small></button>
@@ -148,13 +153,14 @@
 <div id="scrim"></div>
 <aside id="drawer" aria-label="Scenarios and settings">
   <div class="drawer-head"><h2>Scenarios</h2><button id="drawerClose" aria-label="Close">×</button></div>
-  <button data-scn="lockup">Hard braking at speed → front lock-up <kbd>1</kbd></button>
-  <button data-scn="wheelspin">Full-throttle launch → wheelspin <kbd>2</kbd></button>
-  <button data-scn="corner">Sustained cornering → overheat <kbd>3</kbd></button>
+  <button data-scn="lockup" disabled>Lock-up <kbd>1</kbd></button>
+  <button data-scn="wheelspin" disabled>Wheelspin <kbd>2</kbd></button>
+  <button data-scn="corner" disabled>Overheating <kbd>3</kbd></button>
   <div class="row">
     <select id="punctureTire"><option>FL</option><option>FR</option><option>RL</option><option selected>RR</option></select>
-    <button id="punctureBtn">Slow puncture <kbd>4</kbd></button>
+    <button data-scn="puncture" disabled>Slow puncture <kbd>4</kbd></button>
   </div>
+  <div class="note" id="scriptStatus">Loading scenarios…</div>
   <div class="row">
     <select id="compound"><option>SOFT</option><option selected>MEDIUM</option><option>HARD</option></select>
     <button id="newTires">Fit new tires <kbd>N</kbd></button>
@@ -202,7 +208,10 @@ const TEMP_TAU = 6;              // s, tire temp response
 const LEAK_RATE = 0.006;         // fraction of air lost per second on a puncture
 const WEAR_END_LAPS = 40;        // tire age at which wear (grip loss) reaches its maximum
 const GRIP_LOSS_AT_END = 0.25;   // fraction of grip a fully worn tire has lost
+const BRAKE_FULL_DEMAND = 55;     // m/s^2 of braking asked for at brake = 1
 const AGE_STEP_LAPS = 5;         // the "+5 laps" button
+const SLIP_AT_LIMIT = 0.12;       // slip a tire shows right at its grip limit (the backend flags lock-up/spin at 0.15)
+const SLIP_CURVE = 3;            // below the limit slip = SLIP_AT_LIMIT * utilisation^SLIP_CURVE: small until near the limit
 const MAX_CATCHUP_S = 1;         // physics catches up at most this much after a stall (e.g. a background tab)
 
 // Driver inputs from the buttons (and their keyboard shortcuts)
@@ -304,10 +313,7 @@ addEventListener('keydown', e => {
   if (k === 'escape') return drawerOpen() ? setDrawer(false) : stopScenario();
   if (e.target.closest && e.target.closest('aside select')) return;  // let the drawer's dropdowns work
   if (KEY_CONTROLS[k]) { e.preventDefault(); if (!e.repeat) press(KEY_CONTROLS[k], `k:${k}`); return; }
-  if (k === '1') return startScenario('lockup');
-  if (k === '2') return startScenario('wheelspin');
-  if (k === '3') return startScenario('corner');
-  if (k === '4') return puncture();
+  if (SCRIPT_KEYS[k]) return startScenario(SCRIPT_KEYS[k]);
   if (k === 'n') return fitTires();
   if (k === '+' || k === '=') return addTireAge(AGE_STEP_LAPS);
 });
@@ -334,41 +340,123 @@ document.getElementById('drawerBtn').onclick = () => setDrawer(!drawerOpen());
 document.getElementById('drawerClose').onclick = () => setDrawer(false);
 document.getElementById('scrim').onclick = () => setDrawer(false);
 
-// ---------- Scenarios (drive the controls; physics stays the same) ----------
-let scenario = null;
-const SCENARIOS = {
-  lockup: {
-    label: 'Lock-up: stamping on the brakes from 290 kph', duration: 2.5,
-    init() { car.v = Math.max(car.v, 290 / 3.6); },
-    controls: () => ({ throttle: 0, brake: 1, steer: 0 }),
-  },
-  wheelspin: {
-    label: 'Wheelspin: full-throttle launch from a standstill', duration: 2.5,
-    init() { car.v = 0; },  // a full launch spins the rears hard enough for a critical wheelspin
-    controls: () => ({ throttle: 1, brake: 0, steer: 0 }),
-  },
-  corner: {
-    label: 'Sustained cornering at 230 kph', duration: 15,
-    init() { car.v = Math.max(car.v, 230 / 3.6); },
-    controls: () => ({ throttle: car.v < 230 / 3.6 ? 1 : 0.3, brake: 0, steer: 0.4 }),
-  },
-};
-function startScenario(name) {
-  const s = SCENARIOS[name];
-  car.throttle = car.brake = 0;
-  s.init();
-  scenario = { ...s, name, left: s.duration };
-  releaseAll();
+// ---------- Scenarios: scripted approaches from scenarios.json ----------
+// Each button drives the car through the steps in simulator/scenarios.json (shared with the backend's
+// tests), so the car approaches the hazard and the backend can warn before it happens. Driver input is
+// ignored while a scenario runs; Esc cancels. Physics is the same as when you drive.
+const SCRIPT_KEYS = { 1: 'lockup', 2: 'wheelspin', 3: 'corner', 4: 'puncture' };
+const CUES = ['braking_boards', 'hairpin', 'corner_right', 'debris'];
+const STEP_KEYS = ['label', 'seconds', 'until', 'max_s', 'throttle', 'brake', 'hold_speed_kph', 'brake_use',
+                   'throttle_use', 'steer', 'cue', 'event'];
+const DRIVE_MODES = [['throttle', 'brake'], ['hold_speed_kph'], ['brake_use'], ['throttle_use']];
+let scripts = null, scenario = null;
+const isNum = x => typeof x === 'number' && Number.isFinite(x);
+
+function validateScripts(data) {  // same rules as backend/scenarios.py validate_scripts
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('scenarios.json must be an object of scenarios');
+  const out = {};
+  for (const [name, sc] of Object.entries(data)) {
+    if (name.startsWith('_')) continue;
+    const where = `scenario '${name}'`;
+    if (!sc || typeof sc.label !== 'string' || typeof sc.button !== 'string') throw new Error(`${where}: needs a 'label' and 'button' text`);
+    if (!Array.isArray(sc.steps) || !sc.steps.length) throw new Error(`${where}: needs a non-empty 'steps' list`);
+    sc.steps.forEach((st, i) => {
+      const bad = msg => { throw new Error(`${where}, step ${i + 1}${st && st.label ? ` ('${st.label}')` : ''}: ${msg}`); };
+      if (!st || typeof st.label !== 'string') bad("needs a 'label'");
+      const unknown = Object.keys(st).filter(k => !STEP_KEYS.includes(k));
+      if (unknown.length) bad(`unknown field(s) ${unknown.join(', ')}`);
+      if (('seconds' in st) === ('until' in st)) bad("needs exactly one of 'seconds' or 'until'");
+      if ('seconds' in st && !(isNum(st.seconds) && st.seconds > 0)) bad("'seconds' must be a positive number");
+      if ('until' in st) {
+        const e = st.until && Object.entries(st.until);
+        if (!e || e.length !== 1 || !['speed_kph_at_least', 'speed_kph_at_most'].includes(e[0][0]) || !isNum(e[0][1]))
+          bad("'until' must be {\"speed_kph_at_least\": N} or {\"speed_kph_at_most\": N}");
+        if (!(isNum(st.max_s) && st.max_s > 0)) bad("'until' needs a positive 'max_s' safety limit");
+      }
+      if (DRIVE_MODES.filter(m => m.some(k => k in st)).length > 1)
+        bad('use only one way of driving: throttle/brake, hold_speed_kph, brake_use or throttle_use');
+      for (const k of ['throttle', 'brake', 'brake_use', 'throttle_use'])
+        if (k in st && !(isNum(st[k]) && st[k] >= 0 && st[k] <= 1.2)) bad(`'${k}' must be a number from 0 to 1`);
+      if ('steer' in st && !(isNum(st.steer) && st.steer >= -1 && st.steer <= 1)) bad("'steer' must be from -1 to 1");
+      if ('cue' in st && !CUES.includes(st.cue)) bad(`unknown cue '${st.cue}'`);
+      if ('event' in st && !(st.event && Object.keys(st.event).join() === 'puncture'
+                             && [...CORNERS, 'selected'].includes(st.event.puncture))) bad("'event' must be {\"puncture\": tire}");
+    });
+    out[name] = sc;
+  }
+  return out;
+}
+
+function loadScripts() {
+  fetch('scenarios.json', { cache: 'no-store' })
+    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then(data => {
+      scripts = validateScripts(data);
+      const keyOf = Object.fromEntries(Object.entries(SCRIPT_KEYS).map(([k, n]) => [n, k]));
+      document.querySelectorAll('[data-scn]').forEach(b => {
+        const sc = scripts[b.dataset.scn];
+        b.disabled = !sc;
+        if (sc) b.innerHTML = `${sc.button.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))} <kbd>${keyOf[b.dataset.scn]}</kbd>`;
+      });
+      document.getElementById('scriptStatus').textContent = '';
+    })
+    .catch(e => {
+      scripts = null;
+      document.getElementById('scriptStatus').textContent =
+        `Scenarios not loaded: ${e.message}. Serve the simulator folder over http and check scenarios.json.`;
+    });
+}
+
+const currentStep = () => scenario.def.steps[scenario.index];
+function stepControls(st) {  // same maths as backend/scenarios.py step_controls
+  const v = car.v, steer = st.steer ?? 0;
+  if ('hold_speed_kph' in st) return { throttle: v < st.hold_speed_kph / 3.6 ? 1 : 0.3, brake: 0, steer };
+  if ('brake_use' in st) return { throttle: 0, brake: Math.min(1, st.brake_use * frontGripAt(v) / BRAKE_FULL_DEMAND), steer };
+  if ('throttle_use' in st) {
+    const full = engineAccelAt(v, 1);
+    return { throttle: full <= 0 ? 1 : Math.min(1, st.throttle_use * rearGripAt(v) / full), brake: 0, steer };
+  }
+  return { throttle: st.throttle ?? 0, brake: st.brake ?? 0, steer };
+}
+function stepDone(st) {
+  if ('seconds' in st) return scenario.elapsed >= st.seconds;
+  const [kind, kph] = Object.entries(st.until)[0], now = car.v * 3.6;
+  return (kind === 'speed_kph_at_least' ? now >= kph : now <= kph) || scenario.elapsed >= st.max_s;
+}
+function endStep(st) {
+  const tire = st.event?.puncture;
+  if (tire) tires[tire === 'selected' ? document.getElementById('punctureTire').value : tire].leak = LEAK_RATE;
+}
+function advanceScenario(dt) {  // after each physics tick
+  if (!scenario) return;
+  scenario.elapsed += dt;
+  const st = currentStep();
+  if (!stepDone(st)) return;
+  endStep(st);
+  scenario.index += 1;
+  scenario.elapsed = 0;
+  if (scenario.index >= scenario.def.steps.length) return stopScenario();
+  spawnCue(currentStep());
   updateScenarioUI();
 }
-function stopScenario() { scenario = null; updateScenarioUI(); }
-function puncture() { tires[document.getElementById('punctureTire').value].leak = LEAK_RATE; }
+function startScenario(name) {
+  if (!scripts || !scripts[name]) return;
+  car.throttle = car.brake = 0;
+  releaseAll();
+  scenario = { name, def: scripts[name], index: 0, elapsed: 0 };
+  spawnCue(currentStep());
+  updateScenarioUI();
+}
+function stopScenario() { scenario = null; spawnCue(null); updateScenarioUI(); }
 function updateScenarioUI() {
-  document.getElementById('hudScenario').textContent = scenario ? scenario.label : '';
+  document.getElementById('hudScenario').textContent = scenario
+    ? `${scenario.def.label}: ${currentStep().label}  ·  step ${scenario.index + 1} of ${scenario.def.steps.length}` : '';
   document.querySelectorAll('[data-scn]').forEach(b => b.classList.toggle('active', scenario?.name === b.dataset.scn));
+  document.querySelector('.controls')?.classList.toggle('autopilot', !!scenario);
+  const note = document.getElementById('autopilotNote');
+  if (note) note.hidden = !scenario;
 }
 document.querySelectorAll('[data-scn]').forEach(b => b.onclick = () => startScenario(b.dataset.scn));
-document.getElementById('punctureBtn').onclick = puncture;
 document.getElementById('newTires').onclick = () => fitTires(0);
 document.getElementById('plus5').onclick = () => addTireAge(AGE_STEP_LAPS);
 document.querySelectorAll('[data-used]').forEach(b => b.onclick = () => fitTires(Number(b.dataset.used)));
@@ -377,29 +465,31 @@ document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => setDemo
 // ---------- Physics ----------
 const approach = (x, target, rate, dt) => x + (target - x) * Math.min(1, rate * dt);
 const noise = a => (Math.random() - 0.5) * 2 * a;
+// Grip and engine, shared by the physics and the scenario autopilot (which drives relative to the limit)
+const frontGripAt = v => (34 + 0.08 * v) * gripFactor();                         // m/s^2 of braking before lock-up
+const rearGripAt = v => (REAR_GRIP + REAR_DOWNFORCE * v) * gripFactor();         // m/s^2 of drive before wheelspin
+const engineAccelAt = (v, throttle) => throttle * 22 * Math.min(1, 30 / Math.max(v, 1)) * (1 - v / TOP_SPEED);
+const slipBelowLimit = use => SLIP_AT_LIMIT * Math.min(1, Math.max(0, use)) ** SLIP_CURVE;  // tires slip a little before they let go
 
 function step(dt) {
-  let ctl = driverControls();
-  if (scenario) {
-    ctl = scenario.controls();
-    scenario.left -= dt;
-    if (scenario.left <= 0) stopScenario();
-  }
+  const ctl = scenario ? stepControls(currentStep()) : driverControls();  // driver input ignored during a scenario
   car.throttle = approach(car.throttle, ctl.throttle, 8, dt);
   car.brake = approach(car.brake, ctl.brake, 10, dt);
   car.steer = approach(car.steer, ctl.steer, 5, dt);
   const v = car.v;
   const grip = gripFactor();  // worn tires: less traction, braking and cornering grip
 
-  // Longitudinal: engine (traction-limited at the rear) and brakes (grip-limited at the front)
-  const engineAccel = car.throttle * 22 * Math.min(1, 30 / Math.max(v, 1)) * (1 - v / TOP_SPEED);
-  const rearGrip = (REAR_GRIP + REAR_DOWNFORCE * v) * grip;  // spins only pulling hard out of slow corners
+  // Longitudinal: engine (traction-limited at the rear) and brakes (grip-limited at the front).
+  // Slip builds gradually toward the limit, then jumps once the tire lets go (lock-up / wheelspin).
+  const engineAccel = engineAccelAt(v, car.throttle);
+  const rearGrip = rearGripAt(v);  // spins only pulling hard out of slow corners
   const rearExcess = Math.max(0, engineAccel - rearGrip);
-  const rearSlip = rearExcess * 0.1;
-  const brakeDemand = car.brake * 55;
-  const frontGrip = (34 + 0.08 * v) * grip;
+  const rearSlip = slipBelowLimit(engineAccel / rearGrip) + rearExcess * 0.1;
+  const brakeDemand = car.brake * BRAKE_FULL_DEMAND;
+  const frontGrip = frontGripAt(v);
   const frontExcess = Math.max(0, brakeDemand - frontGrip);
-  const frontSlip = -Math.min(1, (frontExcess / frontGrip) * 1.3 + (frontExcess > 0 && v < 15 ? 0.4 : 0));
+  const frontSlip = -Math.min(1, slipBelowLimit(brakeDemand / frontGrip) + (frontExcess / frontGrip) * 1.3
+                                 + (frontExcess > 0 && v < 15 ? 0.4 : 0));
   const decel = Math.min(brakeDemand, frontGrip * (frontExcess > 0 ? 0.85 : 1));
   const drag = 0.0004 * v * v + 0.3;
   car.v = Math.max(0, v + (Math.min(engineAccel, rearGrip + rearExcess * 0.2) - decel - drag) * dt);
@@ -422,8 +512,8 @@ function step(dt) {
     tr.slip = front ? (v > 0.5 ? frontSlip : 0) : rearSlip;
     // Turning right (latG > 0) loads the left tires
     const outsideLoad = latG > 0 === left ? 1 : 0.3;
-    const cornerSpeed = v * (1 + (left ? 1 : -1) * latG * 0.004);
-    tr.wheel = Math.max(0, cornerSpeed * (1 + tr.slip) + (front ? 0 : rearSlip * 6));
+    const cornerSpeed = car.v * (1 + (left ? 1 : -1) * latG * 0.004);  // this tick's speed, like the speed reported with it
+    tr.wheel = Math.max(0, cornerSpeed * (1 + tr.slip) + (front ? 0 : rearExcess * 0.6));  // spinning rears flare even when slow
 
     const target = TRACK_TEMP_C
       + 0.25 * v * 3.6
@@ -433,6 +523,7 @@ function step(dt) {
     tr.temp = approach(tr.temp, target, 1 / TEMP_TAU, dt);
     tr.air = Math.max(0.3, tr.air - tr.leak * dt);
   }
+  advanceScenario(dt);
 }
 
 // ---------- Raw frame (contract: see contracts.md) ----------
@@ -560,13 +651,66 @@ function renderTach(dt) {
   s.transform = car.steer < 0 ? 'translateX(-100%)' : 'none';
 }
 buildTach();
+loadScripts();
 
 // ---------- Car view (display only) ----------
+// Track cues for the current scenario step: objects placed ahead of the car in metres, scrolling in
+// with the road. Debris is placed so it reaches the car when its step ends (the puncture moment).
+const CUE_CAPTIONS = { braking_boards: 'BRAKING ZONE', hairpin: 'HAIRPIN', corner_right: 'RIGHT-HANDERS', debris: 'DEBRIS AHEAD' };
 // Top-down: the car sits near the bottom facing up while the road scrolls toward it at a rate
 // tied to its speed. Steering yaws the car, turns the front wheels and bends the road ahead.
-const mini = { el: document.getElementById('miniView'), scroll: 0, bend: 0 };
+const mini = { el: document.getElementById('miniView'), scroll: 0, bend: 0, cues: [], caption: '' };
 mini.ctx = mini.el && mini.el.getContext ? mini.el.getContext('2d') : null;
 const phase = (y, period) => (((y - mini.scroll) % period) + period) % period;  // road markings move down
+
+function spawnCue(st) {
+  mini.cues = [];
+  mini.caption = st?.cue ? CUE_CAPTIONS[st.cue] : '';
+  if (!st?.cue) return;
+  const add = (ahead, kind, extra = {}) => mini.cues.push({ d: car.dist + ahead, kind, ...extra });
+  if (st.cue === 'braking_boards') [[20, 3], [45, 2], [70, 1]].forEach(([a, n]) => add(a, 'board', { n }));
+  if (st.cue === 'hairpin') for (let a = 25; a <= 220; a += 18) add(a, 'chevron');
+  if (st.cue === 'corner_right') for (let a = 20; a <= 600; a += 30) add(a, 'arrow');
+  if (st.cue === 'debris') {
+    const ahead = Math.max(10, car.v * (st.seconds ?? 2));  // arrives as the step ends
+    [[0, 0], [5, 1.2], [-4, -0.8], [9, 2]].forEach(([dx, dm]) => add(ahead + dm, 'debris', { dx }));
+  }
+}
+
+function drawCues(ctx, centreAt, carY, roadW, w, h) {
+  for (const o of mini.cues) {
+    const y = carY - (o.d - car.dist) * MINI_PX_PER_M;
+    if (y < -24 || y > h + 24) continue;
+    const x = centreAt(Math.max(0, Math.min(h, y)));
+    if (o.kind === 'board') {  // 3-2-1 boards at both road edges
+      for (const side of [-1, 1]) {
+        const bx = x + side * (roadW / 2 + 16) - 7;
+        ctx.fillStyle = '#f2f2f2'; ctx.fillRect(bx, y - 6, 14, 12);
+        ctx.fillStyle = '#111'; for (let i = 0; i < o.n; i++) ctx.fillRect(bx + 2 + i * 4, y - 4, 2, 8);
+      }
+    } else if (o.kind === 'chevron') {  // red and white chevrons on the outside of a slow corner
+      for (const side of [-1, 1]) {
+        const bx = x + side * (roadW / 2 + 14);
+        ctx.fillStyle = '#d33a3a'; ctx.fillRect(bx - 6, y - 5, 12, 10);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath();
+        ctx.moveTo(bx - 2 * side, y - 3); ctx.lineTo(bx + 2 * side, y); ctx.lineTo(bx - 2 * side, y + 3); ctx.stroke();
+      }
+    } else if (o.kind === 'arrow') {  // corner-direction signs on the left edge
+      const bx = x - roadW / 2 - 15;
+      ctx.fillStyle = '#ffb020'; ctx.fillRect(bx - 6, y - 5, 12, 10);
+      ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(bx - 2, y - 3); ctx.lineTo(bx + 2, y); ctx.lineTo(bx - 2, y + 3); ctx.stroke();
+    } else if (o.kind === 'debris') {  // fragments on the racing line, just right of centre
+      ctx.fillStyle = '#9aa1ab';
+      ctx.beginPath(); ctx.moveTo(x + roadW * 0.18 + o.dx, y - 3); ctx.lineTo(x + roadW * 0.18 + o.dx + 5, y);
+      ctx.lineTo(x + roadW * 0.18 + o.dx - 1, y + 3); ctx.closePath(); ctx.fill();
+    }
+  }
+  if (mini.caption) {
+    ctx.font = '700 10px system-ui, sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = '#ffb020';
+    ctx.fillText(mini.caption, w - 8, 14); ctx.textAlign = 'left';
+  }
+}
 
 function drawCar(ctx, wheelAngle, braking) {
   const wheel = '#0c0e12', body = '#4ea1ff', dark = '#2b6cc4';
@@ -621,6 +765,8 @@ function renderMini(dt) {
     ctx.fillRect(x - roadW / 2 - 5, y, 5, ROW + 0.5); ctx.fillRect(x + roadW / 2, y, 5, ROW + 0.5);
     if (phase(y, MINI_DASH + MINI_GAP) < MINI_DASH) { ctx.fillStyle = '#d8dde5'; ctx.fillRect(x - 1.5, y, 3, ROW + 0.5); }
   }
+
+  drawCues(ctx, centreAt, carY, roadW, w, h);
 
   ctx.save();
   ctx.translate(cx, carY);

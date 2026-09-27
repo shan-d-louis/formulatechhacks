@@ -1,4 +1,4 @@
-"""Detectors: lock-up, wheelspin, overheating and pressure anomaly.
+"""Detectors: lock-up, wheelspin (and their near-limit warnings), overheating and pressure anomaly.
 
 Each detector reads one frame's features, updates its state in TireState
 (hold timer, peak, flag, damage), and returns a result describing what happened
@@ -90,6 +90,29 @@ def detect_wheelspin(st: TireState, slip: float, throttle: float, speed_kph: flo
     if r.phase in (STARTED, ACTIVE):
         st.damage_penalty += slip * kph_to_mps(speed_kph) * dt * config.WHEELSPIN_DAMAGE_K
     return r
+
+
+# ---------- Near-limit warnings ----------
+# The car approaching a lock-up or wheelspin: slip is close to the limit but the tire still grips.
+# Only the "near" band counts; once the tire lets go, the lock-up / wheelspin detectors take over.
+
+_NEVER = float("inf")
+
+
+def detect_lockup_risk(st: TireState, slip: float, brake: float, speed_kph: float, t: float,
+                       dt: float = config.DT) -> SlipResult:
+    """Front near lock-up: LOCKUP_SLIP <= slip < LOCKUP_RISK_SLIP under braking, at speed. Warn-only, no damage."""
+    condition = (config.LOCKUP_SLIP <= slip < config.LOCKUP_RISK_SLIP and brake > config.RISK_MIN_BRAKE
+                 and speed_kph > config.RISK_MIN_SPEED_KPH)
+    return _step_event(st.lockup_risk, condition, abs(slip), t, dt, config.RISK_HOLD_S, _NEVER, _NEVER)
+
+
+def detect_wheelspin_risk(st: TireState, slip: float, throttle: float, speed_kph: float, t: float,
+                          dt: float = config.DT) -> SlipResult:
+    """Rear near wheelspin: WHEELSPIN_RISK_SLIP < slip <= WHEELSPIN_SLIP on throttle. Warn-only, no damage."""
+    condition = (config.WHEELSPIN_RISK_SLIP < slip <= config.WHEELSPIN_SLIP and throttle > config.RISK_MIN_THROTTLE
+                 and speed_kph > config.WHEELSPIN_RISK_MIN_SPEED_KPH)
+    return _step_event(st.wheelspin_risk, condition, max(slip, 0.0), t, dt, config.RISK_HOLD_S, _NEVER, _NEVER)
 
 
 # ---------- Overheating ----------

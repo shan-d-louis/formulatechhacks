@@ -1,0 +1,58 @@
+{
+  "_how_to_edit": [
+    "Scripted demo scenarios. Each button drives the car through these steps in order, so the backend sees the car approach the hazard (early warning) before it happens (critical alert).",
+    "The browser simulator and the backend tests (backend/scenarios.py) both run this file, so edit it here only. Reload the simulator page after editing.",
+    "Each step needs a 'label' and a duration: 'seconds', or 'until' ({\"speed_kph_at_least\": N} or {\"speed_kph_at_most\": N}) plus 'max_s' as a safety limit.",
+    "Driving (pick one): 'throttle'/'brake' (0-1), 'hold_speed_kph', 'brake_use' or 'throttle_use' (0-1 share of the tires' grip limit right now, so worn tires are driven just as close to their limit as new ones). Optional 'steer' (-1 left .. 1 right).",
+    "Optional 'cue' drawn in the car view: braking_boards, hairpin, corner_right, debris. Optional 'event' at the end of the step: {\"puncture\": \"FL\"|\"FR\"|\"RL\"|\"RR\"|\"selected\"}.",
+    "Grip use: about 0.9 and above shows as slip near the limit (a 'near lock-up' / 'near wheelspin' warning); above 1.0 the tire lets go."
+  ],
+  "lockup": {
+    "label": "Lock-up",
+    "button": "Braking later and later → front lock-up",
+    "steps": [
+      {"label": "Build speed on the main straight", "throttle": 1, "until": {"speed_kph_at_least": 250}, "max_s": 25},
+      {"label": "Braking zone 1 of 3: normal braking", "brake_use": 0.8, "until": {"speed_kph_at_most": 140}, "max_s": 6, "cue": "braking_boards"},
+      {"label": "Back on the power", "throttle": 1, "until": {"speed_kph_at_least": 250}, "max_s": 20},
+      {"label": "Braking zone 2 of 3: braking later, right at the limit", "brake_use": 0.97, "until": {"speed_kph_at_most": 130}, "max_s": 6, "cue": "braking_boards"},
+      {"label": "Back on the power", "throttle": 1, "until": {"speed_kph_at_least": 250}, "max_s": 20},
+      {"label": "Braking zone 3 of 3: far too late, stamping on the brakes", "brake": 1, "until": {"speed_kph_at_most": 40}, "max_s": 5, "cue": "braking_boards"},
+      {"label": "Pull away gently", "throttle_use": 0.7, "until": {"speed_kph_at_least": 120}, "max_s": 10}
+    ]
+  },
+  "wheelspin": {
+    "label": "Wheelspin",
+    "button": "Harder and harder exits → rear wheelspin",
+    "steps": [
+      {"label": "Approach the hairpin", "hold_speed_kph": 180, "seconds": 3},
+      {"label": "Brake for the hairpin", "brake_use": 0.8, "until": {"speed_kph_at_most": 50}, "max_s": 8, "cue": "hairpin"},
+      {"label": "Hairpin exit 1 of 3: smooth throttle", "throttle_use": 0.75, "until": {"speed_kph_at_least": 140}, "max_s": 10},
+      {"label": "Brake for the next, slower hairpin", "brake_use": 0.8, "until": {"speed_kph_at_most": 20}, "max_s": 8, "cue": "hairpin"},
+      {"label": "Hairpin exit 2 of 3: aggressive throttle, right at the limit", "throttle_use": 0.99, "until": {"speed_kph_at_least": 140}, "max_s": 10},
+      {"label": "Short straight", "hold_speed_kph": 150, "seconds": 2.5},
+      {"label": "Brake for the tightest hairpin", "brake_use": 0.8, "until": {"speed_kph_at_most": 8}, "max_s": 10, "cue": "hairpin"},
+      {"label": "Hairpin exit 3 of 3: full throttle from almost a standstill", "throttle": 1, "seconds": 3},
+      {"label": "Settle down", "hold_speed_kph": 150, "seconds": 4}
+    ]
+  },
+  "corner": {
+    "label": "Overheating",
+    "button": "Fast corners, then a long one → overheating",
+    "steps": [
+      {"label": "Fast right-handers: outside tires heating up", "hold_speed_kph": 230, "steer": 0.25, "seconds": 8, "cue": "corner_right"},
+      {"label": "Short straight", "hold_speed_kph": 230, "seconds": 3},
+      {"label": "Long, tight right-hander: tires pushed past the limit", "hold_speed_kph": 230, "steer": 0.4, "seconds": 12, "cue": "corner_right"},
+      {"label": "Straight: tires cooling", "hold_speed_kph": 230, "seconds": 12}
+    ]
+  },
+  "puncture": {
+    "label": "Slow puncture",
+    "button": "Debris on the racing line → slow puncture",
+    "steps": [
+      {"label": "Normal lap", "hold_speed_kph": 220, "seconds": 5},
+      {"label": "Debris on the racing line", "hold_speed_kph": 220, "seconds": 2, "cue": "debris", "event": {"puncture": "selected"}},
+      {"label": "Keep driving: air leaking out", "hold_speed_kph": 200, "seconds": 20},
+      {"label": "Slow down for the pits", "hold_speed_kph": 120, "seconds": 5}
+    ]
+  }
+}
