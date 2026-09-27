@@ -7,6 +7,10 @@ const WHEELS = ["fl", "fr", "rl", "rr"];
 const WNAME = { fl: "FRONT LEFT", fr: "FRONT RIGHT", rl: "REAR LEFT", rr: "REAR RIGHT" };
 const LEVEL = ["OK", "MANAGE", "BOX THIS LAP", "BOX NOW"];
 const LEVEL_COLOR = ["#2fd27a", "#ffc233", "#ff7a1a", "#ff2a4b"];
+const CAR_IMG = new Image();
+let carHeading = -Math.PI / 2, lastCarPx = null, lastMapArgs = null;
+CAR_IMG.onload = () => { if (lastMapArgs) renderMap(...lastMapArgs); };  // swap the fallback dot for the car once loaded
+CAR_IMG.src = "/static/car.png";
 const FACTOR_COLOR = { "Braking": "#ff2a4b", "Throttle": "#2fd27a", "Speed & cornering": "#00e5ff",
   "Engine & gearing": "#94a3b8", "Tyre heat history": "#ff7a1a", "Tyre temperature": "#ffc233", "Tyre pressure": "#b07cff" };
 const WINDOW = [85, 115];
@@ -223,15 +227,33 @@ function buildMapBg() {
   return c;
 }
 function renderMap(x, y, level) {
+  lastMapArgs = [x, y, level];
   mctx.clearRect(0, 0, map.width, map.height);
   if (!bounds) return;
   if (!mapBg) mapBg = buildMapBg();
   mctx.drawImage(mapBg, 0, 0);
   for (const p of pins) { const [px, py] = toPx(p.x, p.y); mctx.fillStyle = p.c; mctx.beginPath(); mctx.arc(px, py, (p.r || 3.5) * devicePixelRatio, 0, 7); mctx.fill(); }
   const [cx, cy] = toPx(x, y);
-  mctx.fillStyle = LEVEL_COLOR[level || 0];
-  mctx.beginPath(); mctx.arc(cx, cy, 9 * devicePixelRatio, 0, 7); mctx.fill();
-  mctx.strokeStyle = "#fff"; mctx.lineWidth = 2.5 * devicePixelRatio; mctx.stroke();
+  // Point the car along its direction of travel; ignore sub-pixel jitter so it doesn't spin when slow.
+  if (lastCarPx) {
+    const dx = cx - lastCarPx[0], dy = cy - lastCarPx[1];
+    if (Math.hypot(dx, dy) > 1.5 * devicePixelRatio) { carHeading = Math.atan2(dy, dx); lastCarPx = [cx, cy]; }
+  } else lastCarPx = [cx, cy];
+  const d = devicePixelRatio;
+  // A glow in the call colour under the car keeps the OK / manage / box level visible at a glance.
+  mctx.fillStyle = LEVEL_COLOR[level || 0]; mctx.globalAlpha = 0.45;
+  mctx.beginPath(); mctx.arc(cx, cy, 17 * d, 0, 7); mctx.fill();
+  mctx.globalAlpha = 1;
+  if (CAR_IMG.complete && CAR_IMG.naturalWidth) {
+    const len = 36 * d, wid = len * CAR_IMG.naturalWidth / CAR_IMG.naturalHeight;
+    mctx.save(); mctx.translate(cx, cy);
+    mctx.rotate(carHeading - Math.PI / 2);  // the image's nose points down (+y)
+    mctx.drawImage(CAR_IMG, -wid / 2, -len / 2, wid, len);
+    mctx.restore();
+  } else {
+    mctx.beginPath(); mctx.arc(cx, cy, 9 * d, 0, 7); mctx.fill();
+    mctx.strokeStyle = "#fff"; mctx.lineWidth = 2.5 * d; mctx.stroke();
+  }
 }
 
 // ---------------------------------------------------------------- telemetry + life

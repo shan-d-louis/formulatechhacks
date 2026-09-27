@@ -21,5 +21,5 @@ Build a solution that uses data to identify patterns, predict risks, or provide 
 ### TELUS Track: Best Connected Solution
 Build something that gets smarter, safer, or more useful because it's connected.
 
-### Ampire Track: AI for Motorsport Safety
+### Ampere Track: AI for Motorsport Safety
 Challenging students to develop an Al-powered solution that detects, predicts, or prevents safety risks in motorsport
