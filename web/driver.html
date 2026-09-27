@@ -109,7 +109,7 @@
   .flash-lock { box-shadow: inset 0 0 0 6px #ff2a4b; } .flash-spin { box-shadow: inset 0 0 0 6px #2fd27a; }
 </style>
 </head>
-<body>
+<body data-doodles="driver">
   <div class="hud">
     <div class="spd"><span id="spd">–</span> <small>km/h · <span id="gear">–</span></small></div>
     <div class="mid"><span class="call" id="call">–</span><div class="adv" id="adv">Steering is automatic: you control the pedals.</div></div>
@@ -360,5 +360,6 @@ function showRiskAlert() {
 }
 connect();
 </script>
+<script src="/static/doodles.js" defer></script>
 </body>
 </html>
