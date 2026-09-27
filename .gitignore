@@ -16,3 +16,6 @@ CLAUDE.md
 
 # Large or rebuildable training data (rebuild with training/fetch.py + prepare.py)
 training/data/
+
+# node modules
+node_modules/
