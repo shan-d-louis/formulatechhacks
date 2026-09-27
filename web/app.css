@@ -1,4 +1,4 @@
-/* SIDEWALL design system: F1 Hacks dark theme (slate-navy cards, neon cyan primary, crimson secondary).
+/* Lightning Response design system: F1 Hacks dark theme (slate-navy cards, neon cyan primary, crimson secondary).
    Pit-call colours (ok / advise / box / now) keep their meaning across every page. */
 :root {
   /* F1 Hacks palette */
@@ -34,7 +34,9 @@
   --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+/* The page colour is on <html>, so the faint background doodles (doodles.js) can show between panels. */
+html { background: var(--bg); }
+html, body { margin: 0; color: var(--text); font-family: var(--sans); }
 body { min-height: 100vh; line-height: 1.45; -webkit-font-smoothing: antialiased; }
 ::selection { background: rgba(0, 229, 255, .3); }
 a { color: inherit; }
@@ -67,10 +69,8 @@ button, select { font: inherit; color: inherit; }
 /* ---------- top bar ---------- */
 .topbar { display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--line);
   background: rgba(18, 24, 36, .92); backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
-.brand { display: flex; align-items: baseline; gap: 10px; text-decoration: none; }
-.brand b { font-size: 19px; font-weight: 900; letter-spacing: .2em; }
-.brand b::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%;
-  background: var(--f1-red); box-shadow: 0 0 8px var(--f1-red); vertical-align: middle; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand img { display: block; width: 128px; height: 64px; object-fit: contain; }
 .brand span { font-size: 12px; color: var(--muted); }
 .tabs { display: flex; gap: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
 .tabs a { padding: 6px 12px; border-radius: 9px; text-decoration: none; font-size: 14px; font-weight: 500; color: var(--faint); transition: color .15s, background .15s; }
@@ -108,8 +108,10 @@ button, select { font: inherit; color: inherit; }
 .wall { padding: 14px 18px 24px; display: flex; flex-direction: column; gap: 14px; }
 .grid3 { display: grid; grid-template-columns: minmax(360px, 1.1fr) minmax(420px, 1.55fr) minmax(280px, .8fr); gap: 14px; }
 /* Side columns are narrow so the track can be big: compact tyre and risk cards to fit. */
-.wall .car { grid-template-columns: 1fr 40px 1fr; gap: 8px 6px; }
+.wall .car { grid-template-columns: 1fr 92px 1fr; gap: 8px 6px; }
 .wall .tyre { padding: 8px; }
+.wall .tyre .name { font-size: 11px; letter-spacing: .04em; white-space: nowrap; }
+.wall .tyre .health { font-size: 11px; white-space: nowrap; }
 .wall .tyre .temp .big { font-size: 24px; }
 .wall .tyre .temp .unit { font-size: 11px; }
 .wall .tyre .row { font-size: 11px; }
@@ -120,6 +122,18 @@ button, select { font: inherit; color: inherit; }
 /* ---------- map + telemetry ---------- */
 canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid var(--line); border-radius: 10px;
   background: #3d7337; }   /* grass until the circuit is drawn (pitwall.js buildMapBg) */
+/* Crash / tyre-failure overlay on the track map (pitwall.js setCrash) */
+.map-wrap { position: relative; }
+.crash-overlay { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); width: min(86%, 420px);
+  display: flex; flex-direction: column; gap: 4px; align-items: center; text-align: center; padding: 14px 16px;
+  border-radius: 14px; border: 2px solid var(--now); background: rgba(11, 14, 20, .88); box-shadow: 0 0 30px rgba(255, 42, 75, .35);
+  pointer-events: none; }
+.crash-overlay[hidden] { display: none; }
+.crash-overlay b { font-size: 26px; font-weight: 900; letter-spacing: .12em; color: var(--now); }
+.crash-overlay.failure { border-color: var(--box); box-shadow: 0 0 30px rgba(255, 122, 26, .3); }
+.crash-overlay.failure b { color: var(--box); }
+.crash-overlay span { font-size: 14px; color: var(--text); }
+.crash-overlay small { font-size: 12px; color: var(--muted); }
 .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
 .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
 .kvs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
@@ -133,9 +147,17 @@ canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid
 
 /* ---------- car diagram ---------- */
 .car { position: relative; display: grid; grid-template-columns: 1fr 64px 1fr; grid-template-rows: auto auto; gap: 12px 10px; align-items: stretch; }
-.car .chassis { grid-column: 2; grid-row: 1 / span 2; border-radius: 30px 30px 18px 18px; background:
-  linear-gradient(180deg, #1a2436, #131b2a); border: 1px solid var(--line); position: relative; }
-.car .chassis::after { content: "▲"; position: absolute; top: 8px; left: 50%; transform: translateX(-50%); color: var(--faint); font-size: 12px; }
+/* Top-down car between the tiles: front wing up, so each tile sits beside its own wheel. Each wheel glows in its
+   tyre's temperature colour (set by pitwall.js), matching the tile's status line. */
+.car .chassis { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; justify-content: center; min-width: 0; }
+.car-top { position: relative; width: 100%; }
+.car-top img { display: block; width: 100%; height: auto; opacity: .9; filter: drop-shadow(0 0 6px rgba(0, 229, 255, .15)); }
+.car-top .wheel { position: absolute; width: 22%; height: 11%; transform: translate(-50%, -50%); border-radius: 6px;
+  color: var(--faint); background: currentColor; opacity: .38; box-shadow: 0 0 14px 3px currentColor;
+  transition: color .4s, opacity .4s; }
+.car-top .wheel.alert { opacity: .7; animation: wheelAlert 1s infinite; }
+@keyframes wheelAlert { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .car-top .wheel.alert { animation: none; } }
 .tyre { background: var(--panel-2); border: 2px solid var(--line); border-radius: 14px; padding: 10px; min-width: 0; }
 .tyre .head { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .tyre .name { font-size: 12px; font-weight: 800; letter-spacing: .08em; }
@@ -158,6 +180,24 @@ canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid
 /* ---------- risk ---------- */
 .risk { background: var(--panel-2); border-radius: 12px; padding: 12px; }
 .risk + .risk { margin-top: 10px; }
+/* Alert colours (set by pitwall.js renderRisk): crit = happening or >= 30 %, box = pit stop called, warn = raised risk */
+.risk { border: 2px solid transparent; transition: border-color .25s, background-color .25s, box-shadow .25s; }
+.risk.alert-warn { border-color: var(--advise); background-color: rgba(255, 194, 51, .07); }
+.risk.alert-box { border-color: var(--box); background-color: rgba(255, 122, 26, .10); box-shadow: 0 0 14px rgba(255, 122, 26, .25); }
+.risk.alert-crit { border-color: var(--now); background-color: rgba(255, 42, 75, .12); animation: riskPulse 1s infinite; }
+@keyframes riskPulse { 50% { box-shadow: 0 0 0 5px rgba(255, 42, 75, .18); } }
+@media (prefers-reduced-motion: reduce) { .risk.alert-crit { animation: none; box-shadow: 0 0 0 3px rgba(255, 42, 75, .25); } }
+.risk.alert-high { border-color: var(--now); background-color: rgba(255, 42, 75, .10); }
+.risk.alert-high .alert-tag { background: var(--now); color: #fff; }
+/* What the driver's phone is showing right now (live mode) */
+.driver-alert { margin-bottom: 10px; padding: 8px 10px; border-radius: 10px; font-size: 13px; font-weight: 700; }
+.driver-alert[hidden] { display: none; }
+.driver-alert.warn { background: rgba(255, 194, 51, .15); border: 1px solid var(--advise); color: var(--advise); }
+.driver-alert.brace { background: rgba(255, 42, 75, .18); border: 1px solid var(--now); color: #fff; }
+.risk .alert-tag { margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 800; letter-spacing: .08em;
+  vertical-align: middle; color: var(--bg); background: var(--advise); }
+.risk.alert-box .alert-tag { background: var(--box); }
+.risk.alert-crit .alert-tag { background: var(--now); color: #fff; }
 .risk .top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .risk .name { font-weight: 700; }
 .risk .pct { font-size: 28px; font-weight: 800; font-family: var(--mono); }
@@ -247,77 +287,142 @@ canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid
   --home-muted: #a3adbc;
   --home-red: #df3c49;
   --home-teal: #55c3c8;
-  background: var(--home-bg);
   color: var(--home-text);
 }
+html:has(body.home-page) { background: #0b0e13; }
 .home-topbar {
   min-height: 62px;
   padding: 12px clamp(22px, 5vw, 72px);
   background: #0b0e13;
   border-color: rgba(255,255,255,.08);
 }
-.home-topbar .brand b { font-size: 18px; letter-spacing: .24em; }
 .home-page main { max-width: 1320px; margin: auto; padding: 0 clamp(24px, 6vw, 88px) 56px; }
 .home-hero {
   min-height: 390px;
   display: grid;
-  grid-template-columns: 1fr .8fr;
+  grid-template-columns: 1.15fr .85fr;
   align-items: center;
   gap: 32px;
 }
-.hero-copy { max-width: 620px; padding: 50px 0 40px; }
+.hero-copy { max-width: 640px; padding: 48px 0 40px; }
 .hero-copy h1 {
-  margin: 0 0 14px;
+  margin: 0 0 16px;
   color: var(--home-text);
-  font-size: clamp(40px, 5vw, 64px);
-  line-height: 1.08;
-  letter-spacing: -.045em;
-  font-weight: 700;
+  font-size: clamp(36px, 4.2vw, 56px);
+  line-height: 1.06;
+  letter-spacing: -.04em;
+  font-weight: 800;
 }
-.hero-lead { margin: 0; color: var(--home-muted); font-size: 17px; line-height: 1.6; }
+.hero-lead { margin: 0; color: var(--home-muted); font-size: 17px; line-height: 1.65; max-width: 560px; }
+.hero-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+.cta { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 12px; font-weight: 700; font-size: 15px;
+  text-decoration: none; transition: transform .15s ease, background .15s ease, box-shadow .15s ease; }
+.cta.primary { background: #e0323f; color: #fff; box-shadow: 0 8px 24px rgba(255, 77, 94, .3); }
+.cta.primary:hover { transform: translateY(-2px); background: #ea3d4a; box-shadow: 0 12px 28px rgba(255, 77, 94, .4); }
+.cta.ghost { color: var(--home-text); border: 1px solid #3a4452; background: transparent; }
+.cta.ghost:hover { transform: translateY(-2px); border-color: #55c3c8; color: #9ee8ec; }
+.cta:focus-visible { outline: 2px solid #ffd466; outline-offset: 3px; }
 .hero-art {
   height: 250px;
-  border-radius: 30px;
-  background:
-    radial-gradient(ellipse at 55% 50%, rgba(85,195,200,.11), transparent 58%),
-    radial-gradient(ellipse at 65% 58%, rgba(223,60,73,.12), transparent 68%),
-    repeating-conic-gradient(from 0deg, rgba(237,239,232,.045) 0 25%, transparent 0 50%) 50% / 36px 36px;
-  mask-image: radial-gradient(ellipse at center, #000 24%, transparent 78%);
-  opacity: .78;
+  display: grid;
+  place-items: center;
 }
-.home-paths { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.hero-art img { width: 100%; max-height: 250px; object-fit: contain; }
+/* The car zooms in from off the right edge (it faces left), overshoots as it brakes, and settles. index.html
+   restarts it when the page comes back from the browser's back/forward cache. */
+html:has(body.home-page), .home-page { overflow-x: clip; }   /* no sideways scrollbar while the car is off-screen */
+.hero-art { position: relative; }
+.hero-art.zoom-in img { animation: carZoomIn 1.2s cubic-bezier(.16, .84, .3, 1) both; transform-origin: 50% 80%; }
+.hero-art.zoom-in::before {                            /* speed streaks that trail the car and fade */
+  content: ""; position: absolute; left: 30%; right: -40%; top: 34%; height: 36%; pointer-events: none;
+  background: repeating-linear-gradient(180deg, transparent 0 14px, rgba(255, 255, 255, .35) 14px 16px, transparent 16px 30px);
+  -webkit-mask-image: linear-gradient(90deg, #000, transparent); mask-image: linear-gradient(90deg, #000, transparent);
+  animation: carStreaks 1.2s ease-out both;
+}
+@keyframes carZoomIn {
+  0%   { transform: translateX(110vw) skewX(-8deg); filter: blur(4px); }
+  55%  { transform: translateX(-22px) skewX(4deg) rotate(-1.6deg); filter: blur(0); }
+  75%  { transform: translateX(8px) rotate(.6deg); }
+  90%  { transform: translateX(-2px) rotate(0); }
+  100% { transform: none; }
+}
+@keyframes carStreaks {
+  0%   { opacity: 0; transform: translateX(60%); }
+  35%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-art.zoom-in img, .hero-art.zoom-in::before { animation: none; }
+  .hero-art.zoom-in::before { display: none; }
+}
+.home-journey { margin-top: 12px; }
+.journey-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 24px; margin-bottom: 16px; }
+.journey-head h2 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+.journey-head p { margin: 0; color: var(--home-muted); font-size: 15px; }
+.home-paths { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .path-card {
-  --path-accent: var(--home-red);
+  --path-accent: #ff4d5e;
   position: relative;
-  min-height: 192px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding: 22px 22px 20px;
-  border: 1px solid #28313d;
-  border-radius: 15px;
-  background: linear-gradient(145deg, #151a21, #11151b 78%);
+  padding: 20px 22px 22px;
+  border: 1px solid var(--home-line);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 70% at 100% 0%, color-mix(in srgb, var(--path-accent), transparent 86%), transparent 60%),
+    linear-gradient(160deg, #161c25, #10141a 80%);
   color: var(--home-text);
   text-decoration: none;
-  box-shadow: 0 8px 24px rgba(0,0,0,.12);
-  transition: transform .18s ease, border-color .18s ease, background .18s ease;
+  overflow: hidden;
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
-.path-card.simulator { --path-accent: var(--home-teal); }
-.path-card.data { --path-accent: #e8c987; }
-.path-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; border-radius: 15px 0 0 15px; background: var(--path-accent); opacity: .72; }
-.path-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--path-accent), #28313d 48%); background: linear-gradient(145deg, #191f28, #131820 78%); }
+.path-card.simulator { --path-accent: #55c3c8; }
+.path-card.data { --path-accent: #ffc72c; }
+.path-card:hover { transform: translateY(-5px); border-color: color-mix(in srgb, var(--path-accent), transparent 45%);
+  box-shadow: 0 18px 40px -18px color-mix(in srgb, var(--path-accent), transparent 40%); }
 .path-card:focus-visible { outline: 2px solid var(--path-accent); outline-offset: 3px; }
-.path-icon { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--path-accent), transparent 68%); border-radius: 9px; color: var(--path-accent); font-size: 17px; }
-.path-title { margin-top: 19px; font-size: 20px; font-weight: 650; letter-spacing: -.02em; }
-.path-copy { margin-top: 6px; color: var(--home-muted); font-size: 14px; line-height: 1.5; }
-.path-action { display: flex; justify-content: space-between; gap: 12px; width: 100%; margin-top: auto; padding-top: 16px; color: var(--path-accent); font-size: 13px; font-weight: 650; }
+.path-top { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.path-step { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; font-weight: 800; font-size: 15px;
+  color: #0b0e13; background: var(--path-accent); }
+.path-art { margin-top: 16px; height: 84px; display: flex; align-items: flex-end; transition: transform .25s ease; }
+.path-art img { height: 100%; width: auto; display: block; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); }
+.path-sticker { height: 34px; width: auto; transform: rotate(-5deg); filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .4));
+  transition: transform .25s ease; }
+.path-card:hover .path-sticker { transform: rotate(3deg) scale(1.08); }
+.path-card:hover .path-art { transform: translateY(-3px) rotate(-4deg) scale(1.06); }
+.path-title { margin-top: 14px; font-size: 21px; font-weight: 750; letter-spacing: -.02em; }
+.path-copy { margin-top: 6px; color: var(--home-muted); font-size: 15px; line-height: 1.55; }
+.path-meta { margin-top: 12px; font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--path-accent), #f1f4f8 45%); }
+.path-action { display: inline-flex; align-items: center; gap: 8px; margin-top: auto; padding: 10px 16px; border-radius: 11px;
+  font-size: 14px; font-weight: 750; color: #0b0e13; background: var(--path-accent); transition: gap .2s ease; }
+.path-meta + .path-action { margin-top: 18px; }
+.path-card:hover .path-action { gap: 14px; }
 @media (max-width: 700px) {
   .home-page main { padding-inline: 22px; }
   .home-hero { min-height: 0; display: block; }
-  .hero-copy { padding: 66px 0 28px; }
-  .hero-copy h1 { font-size: clamp(36px, 10vw, 52px); }
-  .hero-art { display: none; }
-  .home-paths { grid-template-columns: 1fr; gap: 10px; }
-  .path-card { min-height: 172px; padding: 19px 20px 18px; }
+  .hero-copy { padding: 40px 0 20px; }
+  .hero-copy h1 { font-size: clamp(34px, 9vw, 48px); }
+  .hero-art { height: auto; margin-bottom: 24px; }
+  .home-paths { grid-template-columns: 1fr; gap: 12px; }
 }
-@media (prefers-reduced-motion: reduce) { .path-card { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .path-card, .path-art, .cta, .path-action { transition: none; } }
+
+/* ---------- hand-drawn doodles (web/doodles.js) ---------- */
+.doodle-layer { position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; z-index: 30; overflow: hidden; }
+.doodle-layer.fixed { position: fixed; inset: 0; height: 100%; }
+/* Background doodles sit behind every panel and card (only the page background shows them), faint. */
+.doodle-layer.back { z-index: -1; }
+.doodle-layer.back .doodle { filter: none; opacity: var(--op, .12); }
+.doodle { position: absolute; height: auto; transform: rotate(var(--rot)); filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .35));
+  animation-duration: var(--dur); animation-delay: var(--delay); animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.doodle.float { animation-name: doodleFloat; }
+.doodle.twinkle { animation-name: doodleTwinkle; }
+.doodle.spin { animation-name: doodleSpin; animation-timing-function: linear; }
+.doodle.bob { animation-name: doodleBob; }
+.doodle.roll { animation-name: doodleSpin; animation-timing-function: linear; }
+@keyframes doodleFloat { 0%, 100% { transform: rotate(var(--rot)) translateY(0); } 50% { transform: rotate(calc(var(--rot) + 5deg)) translateY(-9px); } }
+@keyframes doodleTwinkle { 0%, 100% { transform: rotate(var(--rot)) scale(.82); opacity: .65; } 50% { transform: rotate(calc(var(--rot) + 12deg)) scale(1.1); opacity: 1; } }
+@keyframes doodleSpin { from { transform: rotate(var(--rot)); } to { transform: rotate(calc(var(--rot) + 360deg)); } }
+@keyframes doodleBob { 0%, 100% { transform: rotate(var(--rot)) translate(0, 0); } 33% { transform: rotate(calc(var(--rot) - 8deg)) translate(-4px, -6px); } 66% { transform: rotate(calc(var(--rot) + 6deg)) translate(4px, -2px); } }
+@media (prefers-reduced-motion: reduce) { .doodle { animation: none; } }

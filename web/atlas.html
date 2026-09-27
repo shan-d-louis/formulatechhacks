@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SIDEWALL Tyre Atlas</title>
+<title>Lightning Response Tyre Atlas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap">
@@ -25,14 +25,15 @@
   canvas { width: 100%; height: 260px; display: block; }
   .callout { border-left: 3px solid var(--t1); padding: 10px 14px; background: var(--panel-2); border-radius: 8px; font-size: 14px; line-height: 1.5; }
   .scroll { max-height: 520px; overflow: auto; }
-  .model { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .model { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .model canvas { height: 230px; }
+  .model-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
   @media (max-width: 1000px) { .model { grid-template-columns: 1fr; } }
-  .model .kv .v { font-size: 16px; }
 </style>
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="/"><b>SIDEWALL</b><span>Tyre Safety Atlas</span></a>
+  <a class="brand" href="/" aria-label="Lightning Response home"><img src="/static/lightning-response.png" alt="Lightning Response"><span>Tyre Safety Atlas</span></a>
   <nav class="tabs">
     <a href="/pitwall?mode=replay">Replay a real race</a>
     <a href="/pitwall?mode=live">Drive it yourself</a>
@@ -70,53 +71,138 @@
   </div>
   <div class="panel">
     <h3>How good are the models? <span class="badges"><span class="badge ampere">held-out evaluation</span></span></h3>
-    <div class="model" id="models"></div>
+    <div class="model" id="models">
+      <div class="panel" style="background:var(--panel-2)">
+        <h3>Tier A event detector AUC</h3>
+        <canvas id="tierAPlot"></canvas>
+        <p class="model-note">Early-warning classifiers trained on simulated per-wheel truth; external car split is shown where available.</p>
+      </div>
+      <div class="panel" style="background:var(--panel-2)">
+        <h3>Tier B tyre-life ROC-AUC</h3>
+        <canvas id="tierBPlot"></canvas>
+        <p class="model-note">Real F1 hazard models: train, grouped CV, calibration races, and unseen 2025 test races.</p>
+      </div>
+      <div class="panel" style="background:var(--panel-2)">
+        <h3>Safe-laps calibration</h3>
+        <canvas id="calibrationPlot"></canvas>
+        <p class="model-note" id="calibrationNote">Predicted versus observed risk by calibration bin.</p>
+      </div>
+      <div class="panel" style="background:var(--panel-2)">
+        <h3>Virtual TPMS error</h3>
+        <canvas id="tpmsPlot"></canvas>
+        <p class="model-note" id="tpmsNote">Leave-track-out model error versus a naive median baseline.</p>
+      </div>
+      <div class="panel" style="background:var(--panel-2)">
+        <h3>TreeSHAP factor families</h3>
+        <canvas id="shapPlot"></canvas>
+        <p class="model-note" id="shapNote">Stage-1 telemetry model importance, grouped with the same factor families used in live risk explanations.</p>
+      </div>
+      <div class="panel" style="background:var(--panel-2)">
+        <h3>Demand vs grip odds</h3>
+        <canvas id="oddsPlot"></canvas>
+        <p class="model-note" id="oddsNote">Stage-2 logistic terms show how driver demand, tyre temperature, and pressure recalibrate the TreeSHAP telemetry pattern.</p>
+      </div>
+    </div>
   </div>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
 const COLORS = ["#ff2a4b", "#ffc233", "#f8fafc", "#00e5ff", "#b07cff"];
 
-function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
+function chart(canvas, series, { xs, ymax, xlabel, hline, log } = {}) {
+  // Line series use points spread edge to edge; bar charts use one band per category, so bars never hang outside the
+  // plot. Category labels sit centred under their band, wrapped to two lines. `log: true` draws bars up or down from 1
+  // on a log scale (for odds ratios, where x0.1 matters as much as x10).
   const r = canvas.getBoundingClientRect(); const dpr = devicePixelRatio;
   canvas.width = r.width * dpr; canvas.height = r.height * dpr;
-  const c = canvas.getContext("2d"), W = canvas.width, H = canvas.height, L = 36 * dpr, B = 22 * dpr, T = 20 * dpr, R = 8 * dpr;
-  c.clearRect(0, 0, W, H);
+  const c = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
   const n = Math.max(...series.map((s) => s.values.length));
-  ymax = ymax ?? Math.max(...series.flatMap((s) => s.values.filter((v) => v != null))) * 1.1;
-  c.font = `${10 * dpr}px system-ui`; c.fillStyle = "#94a3b8"; c.strokeStyle = "#1e293b";
-  for (let g = 0; g <= 4; g++) {
-    const y = T + (H - T - B) * g / 4; c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke();
-    c.fillText((ymax * (1 - g / 4)).toFixed(ymax < 1 ? 2 : ymax < 10 ? 1 : 0), 2 * dpr, y + 3 * dpr);
+  const bars = series.some((s) => s.bars), barSeries = series.filter((s) => s.bars);
+  const fs = 10 * dpr, lineH = 12 * dpr;
+  c.font = `${fs}px system-ui`;
+  const vals = series.flatMap((s) => s.values.filter((v) => v != null));
+  let lo = 0, hi = ymax ?? Math.max(...vals) * 1.1;
+  if (log) {
+    lo = Math.min(1, ...vals) / 1.4; hi = Math.max(1, ...vals) * 1.4;
   }
-  const X = (i) => L + (W - L - R) * i / Math.max(1, n - 1), Y = (v) => T + (H - T - B) * (1 - v / ymax);
-  if (xs) for (let i = 0; i < n; i += Math.ceil(n / 8)) c.fillText(xs[i], X(i) - 6 * dpr, H - 6 * dpr);
-  if (hline != null) { c.strokeStyle = "#ff2a4b"; c.setLineDash([5, 4]); c.beginPath(); c.moveTo(L, Y(hline)); c.lineTo(W - R, Y(hline)); c.stroke(); c.setLineDash([]); }
+  const L = 38 * dpr, R = 8 * dpr, T = 20 * dpr;
+  const tickLines = bars && xs ? 2 : 1;
+  const B = (tickLines * lineH) + (xlabel ? lineH + 6 * dpr : 4 * dpr) + 4 * dpr;
+  const plotW = W - L - R, plotH = H - T - B;
+  c.clearRect(0, 0, W, H);
+  const Y = log ? (v) => T + plotH * (1 - (Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)))
+                : (v) => T + plotH * (1 - (v - lo) / (hi - lo));
+  const band = plotW / Math.max(1, n);
+  const X = bars ? (i) => L + band * (i + 0.5) : (i) => L + plotW * i / Math.max(1, n - 1);
+  // grid + y labels
+  c.fillStyle = "#94a3b8"; c.strokeStyle = "#1e293b"; c.lineWidth = 1; c.textAlign = "left";
+  const ticks = log ? [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50].filter((t) => t >= lo && t <= hi)
+                    : [0, 1, 2, 3, 4].map((g) => lo + (hi - lo) * g / 4);
+  for (const t of ticks) {
+    const y = Y(t); c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke();
+    const txt = log ? `×${t}` : t.toFixed(hi < 1 ? 2 : hi < 10 ? 1 : 0);
+    c.fillText(txt, 2 * dpr, y + 3 * dpr);
+  }
+  if (hline != null) { c.strokeStyle = "#ff2a4b"; c.setLineDash([5 * dpr, 4 * dpr]); c.beginPath(); c.moveTo(L, Y(hline)); c.lineTo(W - R, Y(hline)); c.stroke(); c.setLineDash([]); }
+  // series
+  const base = log ? 1 : lo;
   series.forEach((s, k) => {
     c.strokeStyle = s.color || COLORS[k]; c.fillStyle = s.color || COLORS[k]; c.lineWidth = 2 * dpr;
     if (s.bars) {
-      const bw = (W - L - R) / n * .7;
-      s.values.forEach((v, i) => { if (v != null) c.fillRect(X(i) - bw / 2, Y(v), bw, Y(0) - Y(v)); });
+      const group = band * 0.72, bw = group / Math.max(1, barSeries.length), b = barSeries.indexOf(s);
+      s.values.forEach((v, i) => {
+        if (v == null) return;
+        const y0 = Y(base), y1 = Y(v), x = X(i) - group / 2 + b * bw;
+        c.fillRect(x, Math.min(y0, y1), bw * 0.9, Math.max(1 * dpr, Math.abs(y0 - y1)));
+      });
     } else {
       c.beginPath(); let st = false;
       s.values.forEach((v, i) => { if (v == null) { st = false; return; } st ? c.lineTo(X(i), Y(v)) : c.moveTo(X(i), Y(v)); st = true; });
       c.stroke();
     }
   });
+  // x labels
+  c.fillStyle = "#94a3b8"; c.textAlign = "center";
+  const fit = (text, width) => {                       // up to two lines, ellipsis if still too long
+    const words = String(text).split(" "); const lines = [""];
+    for (const w of words) {
+      const tryLine = lines.at(-1) ? `${lines.at(-1)} ${w}` : w;
+      if (c.measureText(tryLine).width <= width || !lines.at(-1)) lines[lines.length - 1] = tryLine;
+      else if (lines.length < tickLines) lines.push(w);
+      else { lines[lines.length - 1] += "…"; break; }
+    }
+    return lines.map((ln) => { while (c.measureText(ln).width > width && ln.length > 2) ln = ln.slice(0, -2) + "…"; return ln; });
+  };
+  if (xs) {
+    if (bars) {
+      for (let i = 0; i < n; i++) fit(xs[i], band * 0.96).forEach((ln, j) => c.fillText(ln, X(i), T + plotH + lineH * (j + 1)));
+    } else {
+      const every = Math.ceil(n / 8);
+      for (let i = 0; i < n; i += every) {
+        const w = c.measureText(String(xs[i])).width;
+        c.fillText(xs[i], Math.min(Math.max(X(i), L + w / 2), W - R - w / 2), T + plotH + lineH);
+      }
+    }
+  }
+  if (xlabel) { c.textAlign = "center"; c.fillText(xlabel, L + plotW / 2, H - 4 * dpr); }
+  // legend
+  c.textAlign = "left";
   let lx = L; series.forEach((s, k) => { c.fillStyle = s.color || COLORS[k]; c.fillText(s.label, lx, 12 * dpr); lx += c.measureText(s.label).width + 14 * dpr; });
-  if (xlabel) { c.fillStyle = "#94a3b8"; c.fillText(xlabel, W - R - c.measureText(xlabel).width, H - 6 * dpr); }
 }
 
 (async () => {
-  const [a, m] = await Promise.all([(await fetch("/api/atlas")).json(), (await fetch("/api/metrics")).json()]);
+  const [a, plots] = await Promise.all([
+    (await fetch("/api/atlas")).json(),
+    (await fetch("/api/metric-plots")).json(),
+  ]);
   if (!a.summary) { $("hero").innerHTML = `<div class="panel">Atlas not built yet. Run <code>python -m sidewall.data.build_atlas</code>.</div>`; return; }
   const s = a.summary;
   $("hero").innerHTML = [["Races", s.races], ["Stints analysed", s.stints.toLocaleString()], ["Performance cliffs found", s.cliffs], ["Tyre failures labelled", `${s.failures}`]]
     .map(([k, v]) => `<div class="panel stat"><div class="muted" style="font-size:12px">${k}</div><div class="v">${v}</div></div>`).join("");
   const q = a.qatar;
   $("qatar").innerHTML = q && q.model_cap_10pct != null
-    ? `<b>Qatar check.</b> After sidewall failures in 2023 the FIA imposed an emergency <b>${q.fia_cap_2023}-lap</b> maximum per set (${q.fia_cap_2025} in 2025). From lap-time data alone, SIDEWALL's data-driven cap for ${q.circuit} is <b>${q.model_cap_10pct} laps</b>, and the same method produces a cap for <b>every</b> circuit before anything goes wrong.`
-    : `<b>A data-driven "Qatar rule" for every circuit.</b> After sidewall failures at Qatar 2023 the FIA imposed an emergency 18-lap maximum per set. SIDEWALL derives the equivalent cap for every circuit from lap-time data, before anything goes wrong. Seasons in the atlas: ${s.seasons.join(", ")}.`;
+    ? `<b>Qatar check.</b> After sidewall failures in 2023 the FIA imposed an emergency <b>${q.fia_cap_2023}-lap</b> maximum per set (${q.fia_cap_2025} in 2025). From lap-time data alone, Lightning Response's data-driven cap for ${q.circuit} is <b>${q.model_cap_10pct} laps</b>, and the same method produces a cap for <b>every</b> circuit before anything goes wrong.`
+    : `<b>A data-driven "Qatar rule" for every circuit.</b> After sidewall failures at Qatar 2023 the FIA imposed an emergency 18-lap maximum per set. Lightning Response derives the equivalent cap for every circuit from lap-time data, before anything goes wrong. Seasons in the atlas: ${s.seasons.join(", ")}.`;
   const maxCap = Math.max(...a.circuits.map((c) => c.stint_cap_10pct || 0));
   $("circ").innerHTML = `<tr><th>Circuit</th><th>Cap</th><th></th><th>Cliff rate</th><th>Deg s/lap</th><th>Stints</th></tr>` +
     a.circuits.map((c, i) => `<tr data-i="${i}"><td>${c.circuit}</td><td class="num">${c.stint_cap_10pct ?? "–"}</td>
@@ -138,9 +224,62 @@ function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
   chart($("deg"), comps.map((k, j) => ({ label: k, values: years.map((y) => a.deg_by_year[y][k]), color: COLORS[j] })),
     { xs: years, xlabel: "season" });
 
+  const f = (x, d = 2) => x == null ? "–" : Number(x).toFixed(d);
+  const tierA = plots.tierA.points.filter((p) => ["lockup", "wheelspin"].includes(p.event));
+  chart($("tierAPlot"), [
+    { label: "ROC-AUC", values: tierA.map((p) => p.roc_auc), bars: true, color: "#00e5ff" },
+    { label: "PR-AUC", values: tierA.map((p) => p.pr_auc), bars: true, color: "#ffc233" },
+  ], { xs: tierA.map((p) => `${p.event} ${p.split}`), ymax: 1, xlabel: "split" });
+
+  const tierBLabels = ["train", "CV", "calib", "2025"];
+  const tierBModels = [...new Set(plots.tierB.points.map((p) => p.model))];
+  chart($("tierBPlot"), tierBModels.map((model, i) => ({
+    label: model,
+    values: tierBLabels.map((label) => plots.tierB.points.find((p) => p.model === model && p.label === label)?.value),
+    color: COLORS[i],
+  })), { xs: tierBLabels, ymax: 1, xlabel: "split" });
+
+  const cal = plots.cliffCalibration.points;
+  chart($("calibrationPlot"), [
+    { label: "predicted", values: cal.map((p) => p.predicted), color: "#00e5ff" },
+    { label: "observed", values: cal.map((p) => p.observed), color: "#ff2a4b" },
+  ], { xs: cal.map((p) => `bin ${p.bin}`), ymax: Math.max(0.15, ...cal.flatMap((p) => [p.predicted || 0, p.observed || 0])) * 1.1, xlabel: "risk bin" });
+  $("calibrationNote").textContent = `Conformal violation rate on 2025: ${f(100 * plots.cliffCalibration.violation_rate, 1)} %. Target is <= 10 %.`;
+
+  const core = plots.virtualTpms.points.filter((p) => p.target === "core");
+  chart($("tpmsPlot"), [
+    { label: "model MAE C", values: core.map((p) => p.mae_c), bars: true, color: "#00e5ff" },
+    { label: "baseline MAE C", values: core.map((p) => p.baseline_mae_c), bars: true, color: "#ff2a4b" },
+  ], { xs: core.map((p) => p.wheel), xlabel: "wheel" });
+  $("tpmsNote").textContent = `Core temperature error by wheel; pressure derived via gas law has ${f(plots.virtualTpms.pressure_from_gas_law_mae_psi)} psi MAE.`;
+
+  const shap = plots.riskFactorAnalytics.stage1FamilyGain || [];
+  const shapFamilies = ["Braking", "Throttle", "Speed & cornering", "Engine & gearing", "Tyre heat history"];
+  chart($("shapPlot"), ["lockup", "wheelspin"].map((event, i) => ({
+    label: event,
+    values: shapFamilies.map((family) => shap.find((p) => p.event === event && p.family === family)?.share),
+    bars: true,
+    color: COLORS[i === 0 ? 0 : 3],
+  })), { xs: shapFamilies, xlabel: "share of each model's learning, by factor family" });
+  $("shapNote").textContent = "Grouped Stage-1 LightGBM gain mirrors the TreeSHAP families shown in live lock-up and wheelspin explanations.";
+
+  const odds = (plots.riskFactorAnalytics.stage2Terms || [])
+    .filter((p) => p.source === "sim" && p.term !== "ml_logit")
+    .sort((a, b) => Math.abs(Math.log(b.odds_ratio || 1)) - Math.abs(Math.log(a.odds_ratio || 1)))
+    .slice(0, 8);
+  const TERM = { hot: "hot tyres", cold: "cold tyres", psi_low: "low pressure", psi_high: "high pressure",
+    brake_speed: "braking at speed", brake_demand: "brake demand", lat_load: "cornering load",
+    throttle_demand: "throttle demand", low_gear_throttle: "low-gear throttle" };
+  const EVT = { lockup: "Lock-up", wheelspin: "Wheelspin" };
+  chart($("oddsPlot"), [
+    { label: "odds ratio (log scale, from ×1)", values: odds.map((p) => p.odds_ratio), bars: true, color: "#ffc233" },
+  ], { xs: odds.map((p) => `${EVT[p.event] || p.event}: ${TERM[p.term] || p.term.replace(/_/g, " ")}`), log: true, hline: 1, xlabel: "simulator car, per-car calibration" });
+  $("oddsNote").textContent = "Bars above ×1 raise the odds of the event in the next second; bars below ×1 lower them. Temperatures are per 10 °C outside the grip window, pressures per psi. Shown for the simulator car used in the live demo.";
+  return;
+
   const A = m.tierA ? m.tierA.events : {}, B = m.tierB || {}, T = m.twin || {};
   const card = (title, rows) => `<div class="panel" style="background:var(--panel-2)"><h3>${title}</h3>${rows.map(([k, v]) => `<div class="kv" style="margin-bottom:6px"><div class="k">${k}</div><div class="v mono">${v}</div></div>`).join("")}</div>`;
-  const f = (x, d = 2) => x == null ? "–" : Number(x).toFixed(d);
+  const fOld = (x, d = 2) => x == null ? "–" : Number(x).toFixed(d);
   $("models").innerHTML = [
     card("Lock-up / wheelspin (Tier A)", [
       ["Lock-up ROC-AUC · unseen drivers / tracks / other car", A.lockup ? `${f(A.lockup.leave_session_out.roc_auc)} / ${f(A.lockup.leave_track_out.roc_auc)} / ${f(A.lockup.external_thulab_gt_car.roc_auc)}` : "–"],
@@ -162,5 +301,6 @@ function chart(canvas, series, { xs, ymax, xlabel, hline } = {}) {
   ].join("");
 })();
 </script>
+<script src="/static/doodles.js" defer></script>
 </body>
 </html>

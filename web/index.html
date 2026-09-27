@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0b0e13">
-<title>SIDEWALL · AI tyre safety</title>
+<title>Lightning Response · AI tyre safety</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap">
@@ -12,36 +12,68 @@
 </head>
 <body class="home-page">
 <header class="topbar home-topbar">
-  <a class="brand" href="/" aria-label="SIDEWALL home"><b>SIDEWALL</b></a>
+  <a class="brand" href="/" aria-label="Lightning Response home"><img src="/static/lightning-response.png" alt="Lightning Response"></a>
 </header>
 <main>
   <section class="home-hero" aria-labelledby="home-title">
     <div class="hero-copy">
-      <h1 id="home-title">Tyre safety dashboard</h1>
-      <p class="hero-lead">Choose a way to explore SIDEWALL.</p>
+      <h1 id="home-title">Early warnings for tyre failures, lock-ups and wheelspin</h1>
+      <p class="hero-lead">Lightning Response reads a race car&#8217;s telemetry, estimates each tyre&#8217;s temperature and
+        pressure, and predicts problems before they happen. Every warning names its cause, and the pit wall and the
+        driver get the same call: keep going, manage the tyres, or box.</p>
+      <div class="hero-cta">
+        <a class="cta primary" href="/pitwall?mode=replay&amp;scenario=silverstone2020">Watch a real race <span aria-hidden="true">→</span></a>
+        <a class="cta ghost" href="/pitwall?mode=live">Take the wheel</a>
+      </div>
     </div>
-    <div class="hero-art" aria-hidden="true"></div>
+    <div class="hero-art zoom-in" id="heroCar" aria-hidden="true"><img src="/static/hero-car.png" alt=""></div>
   </section>
-  <nav class="home-paths" aria-label="Explore SIDEWALL">
-    <a class="path-card replay" href="/pitwall?mode=replay&amp;scenario=silverstone2020">
-      <span class="path-icon" aria-hidden="true">↗</span>
-      <span class="path-title">Race replay</span>
-      <span class="path-copy">Review a tyre-risk scenario from a real race.</span>
-      <span class="path-action">Open replay <span aria-hidden="true">→</span></span>
-    </a>
-    <a class="path-card simulator" href="/pitwall?mode=live">
-      <span class="path-icon" aria-hidden="true">↗</span>
-      <span class="path-title">Drive simulator</span>
-      <span class="path-copy">Try braking and throttle inputs in the simulator.</span>
-      <span class="path-action">Open simulator <span aria-hidden="true">→</span></span>
-    </a>
-    <a class="path-card data" href="/atlas">
-      <span class="path-icon" aria-hidden="true">↗</span>
-      <span class="path-title">Tyre data</span>
-      <span class="path-copy">Explore stint, degradation and model findings.</span>
-      <span class="path-action">View data <span aria-hidden="true">→</span></span>
-    </a>
-  </nav>
+
+  <section class="home-journey" aria-labelledby="journey-title">
+    <div class="journey-head">
+      <h2 id="journey-title">Three ways in</h2>
+      <p>New here? Start with the race replay, then take the wheel yourself.</p>
+    </div>
+    <nav class="home-paths" aria-label="Explore Lightning Response">
+      <a class="path-card replay" href="/pitwall?mode=replay&amp;scenario=silverstone2020">
+        <span class="path-top">
+          <span class="path-step">1</span>
+          <img class="path-sticker" src="/static/doodles/start-here.png" alt="Start here">
+        </span>
+        <span class="path-art" aria-hidden="true"><img src="/static/doodles/flag.png" alt=""></span>
+        <span class="path-title">Watch a real race</span>
+        <span class="path-copy">Replay Hamilton&#8217;s Silverstone 2020 stint and see us call BOX 15 laps before his tyre failed.</span>
+        <span class="path-meta">No setup · about 2 minutes</span>
+        <span class="path-action">Play the replay <span aria-hidden="true">→</span></span>
+      </a>
+      <a class="path-card simulator" href="/pitwall?mode=live">
+        <span class="path-top"><span class="path-step">2</span></span>
+        <span class="path-art" aria-hidden="true"><img src="/static/doodles/phone.png" alt=""></span>
+        <span class="path-title">Drive it yourself</span>
+        <span class="path-copy">Scan a QR code, use your phone as the pedals and try to lock the tyres. We&#8217;ll warn you first.</span>
+        <span class="path-meta">Needs a phone · about 3 minutes</span>
+        <span class="path-action">Take the wheel <span aria-hidden="true">→</span></span>
+      </a>
+      <a class="path-card data" href="/atlas">
+        <span class="path-top"><span class="path-step">3</span></span>
+        <span class="path-art" aria-hidden="true"><img src="/static/doodles/graph.png" alt=""></span>
+        <span class="path-title">Explore the data</span>
+        <span class="path-copy">Safe stint limits for 33 circuits, tyre survival curves, and how accurate our models really are.</span>
+        <span class="path-meta">Browse at your own pace</span>
+        <span class="path-action">Open the atlas <span aria-hidden="true">→</span></span>
+      </a>
+    </nav>
+  </section>
+
 </main>
+<script>
+// Replay the car's zoom-in when the page is shown from the back/forward cache (a normal load plays it already).
+addEventListener("pageshow", (e) => {
+  if (!e.persisted) return;
+  const car = document.getElementById("heroCar");
+  car.classList.remove("zoom-in"); void car.offsetWidth; car.classList.add("zoom-in");
+});
+</script>
+<script src="/static/doodles.js" defer></script>
 </body>
 </html>

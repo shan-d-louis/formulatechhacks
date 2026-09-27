@@ -1,4 +1,4 @@
-"""SIDEWALL server: pit-wall dashboard, crew phones, driver phone controller and the Ollon atlas.
+"""Lightning Response server: pit-wall dashboard, crew phones, driver phone controller and the Ollon atlas.
 
     python -m sidewall.server.app            # then open http://localhost:8000
 
@@ -11,6 +11,7 @@ Pages
 import asyncio
 import io
 import json
+import os
 import socket
 import sys
 import time
@@ -18,14 +19,15 @@ from typing import Any, Literal
 
 import qrcode
 import uvicorn
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from sidewall import config
 from sidewall.engine.monitor import load_bundles
-from sidewall.server import feedback
+from sidewall.models.risk import DEMAND, FACTORS, TYRE, feature_family
+from sidewall.server import feedback, tunnel
 from sidewall.server.jobs import JOBS, JobRecord
 from sidewall.server.utils import short_git_hash
 from sidewall.sources import replay
@@ -36,7 +38,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 import laps as laps_model  # noqa: E402
 
-app = FastAPI(title="SIDEWALL")
+app = FastAPI(title="Lightning Response")
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 BUNDLES = load_bundles()
@@ -295,11 +297,189 @@ def get_job_result(job_id: str):
 @app.get("/api/metrics")
 def metrics():
     out = {}
-    for name in ("tierA_metrics.json", "tierB_metrics.json", "twin_metrics.json"):
+    for name in (
+        "tierA_metrics.json",
+        "tierB_metrics.json",
+        "twin_metrics.json",
+        "risk_metrics.json",
+    ):
         p = config.WEIGHTS / name
         if p.exists():
             out[name.replace("_metrics.json", "")] = json.loads(p.read_text())
     return out
+
+
+def _metric_file(name: str) -> dict[str, Any]:
+    """Load aggregate model metrics from ``models/weights`` when present."""
+
+    path = config.WEIGHTS / name
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def _point(label: str, value: Any) -> dict[str, Any]:
+    """Return a chart point while preserving missing metric values as null."""
+
+    return {"label": label, "value": value if isinstance(value, (int, float)) else None}
+
+
+def _risk_factor_analytics(risk_metrics: dict[str, Any]) -> dict[str, Any]:
+    """Return chart-ready risk factor summaries from the trained explainability stack."""
+
+    bundle = BUNDLES.get("risk") or {}
+    features = bundle.get("features", [])
+    stage1 = bundle.get("stage1", {})
+    phase = {"lockup": {"Throttle": "Braking"}, "wheelspin": {"Braking": "Throttle"}}
+    family_points = []
+    for event, model in stage1.items():
+        gain_by_family = {name: 0.0 for name in FACTORS}
+        importances = model.booster_.feature_importance("gain")
+        for feature, gain in zip(features, importances):
+            family = phase.get(event, {}).get(feature_family(feature), feature_family(feature))
+            gain_by_family[family] = gain_by_family.get(family, 0.0) + float(gain)
+        total = sum(gain_by_family.values())
+        for family, gain in gain_by_family.items():
+            family_points.append(
+                {
+                    "event": event,
+                    "family": family,
+                    "share": gain / total if total else None,
+                    "gain": gain,
+                }
+            )
+
+    stage2_terms = []
+    term_families = {
+        event: dict(DEMAND[event] + TYRE)
+        for event in ("lockup", "wheelspin")
+    }
+    for source, source_report in risk_metrics.items():
+        for event, report in source_report.items():
+            odds = report.get("odds_ratios", {})
+            for term, ratio in odds.items():
+                if term == "ml_logit":
+                    family = "Telemetry pattern"
+                else:
+                    family = term_families.get(event, {}).get(term, term)
+                stage2_terms.append(
+                    {
+                        "source": source,
+                        "event": event,
+                        "term": term,
+                        "family": family,
+                        "odds_ratio": ratio,
+                    }
+                )
+
+    return {
+        "title": "Risk TreeSHAP factor families",
+        "stage1FamilyGain": family_points,
+        "stage2Terms": stage2_terms,
+        "basis": "Stage-1 LightGBM feature gain grouped with the same families used for per-frame TreeSHAP explanations; Stage-2 odds ratios come from grouped cross-validation metrics.",
+    }
+
+
+@app.get("/api/metric-plots")
+def metric_plots():
+    """Return chart-ready aggregate evaluation series for the Atlas UI."""
+
+    tier_a = _metric_file("tierA_metrics.json")
+    tier_b = _metric_file("tierB_metrics.json")
+    risk = _metric_file("risk_metrics.json")
+    twin = _metric_file("twin_metrics.json")
+
+    tier_a_points = []
+    for event, report in tier_a.get("events", {}).items():
+        for split, label in (
+            ("leave_session_out", "unseen drivers"),
+            ("leave_track_out", "unseen tracks"),
+            ("external_thulab_gt_car", "other car"),
+        ):
+            metrics_for_split = report.get(split, {})
+            if metrics_for_split.get("roc_auc") is not None:
+                tier_a_points.append(
+                    {
+                        "event": event,
+                        "split": label,
+                        "roc_auc": metrics_for_split.get("roc_auc"),
+                        "pr_auc": metrics_for_split.get("pr_auc"),
+                    }
+                )
+
+    tier_b_points = []
+    for model_key, title in (
+        ("cliff", "Cliff hazard"),
+        ("failure", "Failure hazard"),
+        ("cliff_horizon", "3-lap cliff horizon"),
+    ):
+        report = tier_b.get(model_key, {})
+        tier_b_points.extend(
+            [
+                {
+                    "model": title,
+                    **_point("train", report.get("train_in_sample", {}).get("roc_auc")),
+                },
+                {"model": title, **_point("CV", report.get("train_cv_grouped_by_race_auc"))},
+                {"model": title, **_point("calib", report.get("calib", {}).get("roc_auc"))},
+                {"model": title, **_point("2025", report.get("test", {}).get("roc_auc"))},
+            ]
+        )
+
+    coverage = tier_b.get("cliff_horizon", {}).get("coverage_conformal", {})
+    calibration = coverage.get("calibration_k5", {})
+    calibration_points = [
+        {
+            "bin": str(idx),
+            "predicted": row.get("pred"),
+            "observed": row.get("obs"),
+            "n": row.get("n"),
+        }
+        for idx, row in sorted(calibration.items(), key=lambda item: int(item[0]))
+    ]
+
+    reliability = []
+    for source, source_report in risk.items():
+        for event, report in source_report.items():
+            reliability.append(
+                {
+                    "source": source,
+                    "event": event,
+                    "points": report.get("reliability", []),
+                    "roc_auc_stage1": report.get("stage1_only", {}).get("roc_auc"),
+                    "roc_auc_stage2": report.get("stage1_plus_stage2", {}).get("roc_auc"),
+                }
+            )
+
+    tpms = twin.get("leave_track_out", {})
+    tpms_points = []
+    for target in ("core", "surf"):
+        for wheel in ("fl", "fr", "rl", "rr"):
+            report = tpms.get(f"{target}_{wheel}", {})
+            tpms_points.append(
+                {
+                    "target": target,
+                    "wheel": wheel.upper(),
+                    "mae_c": report.get("mae_c"),
+                    "baseline_mae_c": report.get("baseline_mae_c"),
+                }
+            )
+
+    return {
+        "tierA": {"title": "Tier A event detectors", "points": tier_a_points},
+        "tierB": {"title": "Tier B tyre-life hazards", "points": tier_b_points},
+        "cliffCalibration": {
+            "title": "Conformal safe-laps calibration",
+            "risk_level": coverage.get("risk_level"),
+            "violation_rate": coverage.get("violation_rate"),
+            "points": calibration_points,
+        },
+        "riskReliability": {"title": "Risk calibration reliability", "series": reliability},
+        "riskFactorAnalytics": _risk_factor_analytics(risk),
+        "virtualTpms": {
+            "title": "Virtual TPMS leave-track-out error",
+            "pressure_from_gas_law_mae_psi": twin.get("pressure_from_gas_law_mae_psi"),
+            "points": tpms_points,
+        },
+    }
 
 
 @app.get("/api/atlas")
@@ -308,18 +488,34 @@ def atlas_data():
     return JSONResponse(json.loads(p.read_text()) if p.exists() else {})
 
 
+def phone_base(request: Request) -> str:
+    """The address a phone should open: the Cloudflare tunnel when one is running, else the address this page was
+    opened on (if not localhost, phones can reach it too), else this laptop's local-network address."""
+    public = os.environ.get("SIDEWALL_PUBLIC_URL") or tunnel.public_url()
+    if public:
+        return public.rstrip("/")
+    host = request.headers.get("host", "")
+    if host and not host.split(":")[0] in ("localhost", "127.0.0.1", "[::1]"):
+        scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+        return f"{scheme}://{host}"
+    return f"http://{lan_ip()}:{PORT}"
+
+
 @app.get("/api/qr")
-def qr(path: str = "/crew"):
-    url = f"http://{lan_ip()}:{PORT}{path}"
+def qr(request: Request, path: str = "/crew"):
+    url = f"{phone_base(request)}{path}"
     img = qrcode.make(url)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    return Response(buf.getvalue(), media_type="image/png", headers={"X-URL": url})
+    # Never cached: the laptop's address changes when it reconnects (e.g. a phone hotspot), and a stale QR code
+    # would send phones to an address that no longer exists.
+    return Response(buf.getvalue(), media_type="image/png",
+                    headers={"X-URL": url, "Cache-Control": "no-store", "Access-Control-Expose-Headers": "X-URL"})
 
 
 @app.get("/api/lan")
-def lan():
-    return {"base": f"http://{lan_ip()}:{PORT}"}
+def lan(request: Request):
+    return {"base": phone_base(request), "tunnel": tunnel.public_url() is not None}
 
 
 # ------------------------------------------------------------------ websockets
@@ -356,15 +552,18 @@ async def ws_crew(ws: WebSocket):
 @app.websocket("/ws/driver")
 async def ws_driver(ws: WebSocket):
     """Phone controller. Messages: claim (take the wheel), release (hand back), input (pedals, with a sequence
-    number so late packets are dropped). Anything received counts as a heartbeat."""
+    number so late packets are dropped), box (pit stop: fresh tyres). Anything received counts as a heartbeat."""
     await hub.join("driver", ws)
     await _presence()
     try:
         while True:
             msg = await ws.receive_json()
-            if LIVE is None:
-                continue
             kind = msg.get("type")
+            if LIVE is None:
+                if kind == "scenario":             # say why nothing happens instead of leaving the phone waiting
+                    await ws.send_json({"type": "scenario_error",
+                                        "text": "The live car isn't running: open the pit wall in 'Drive it yourself' first."})
+                continue
             if kind == "claim":
                 LIVE.claim()
                 await hub.send("pitwall", {"type": "notice", "text": "A driver has taken the wheel."})
@@ -373,6 +572,17 @@ async def ws_driver(ws: WebSocket):
                 await hub.send("pitwall", {"type": "notice", "text": "Driver handed back to the autopilot."})
             elif kind == "input":
                 LIVE.set_input(msg.get("throttle", 0.0), msg.get("brake", 0.0), int(msg.get("seq", 0)))
+            elif kind == "box":
+                LIVE.pit_stop()
+                await hub.send("pitwall", {"type": "new_tyres", "by": "driver"})
+            elif kind == "scenario":
+                try:
+                    label = LIVE.start_scenario(str(msg.get("key", "")))
+                    await hub.send("pitwall", {"type": "notice", "text": f"Scenario started from the phone: {label}."})
+                except (KeyError, ValueError, OSError) as e:
+                    await ws.send_json({"type": "scenario_error", "text": f"Scenario not available: {e}"})
+            elif kind == "scenario_stop":
+                LIVE.stop_scenario()
     except WebSocketDisconnect:
         hub.leave("driver", ws)
         await _presence()
@@ -452,5 +662,8 @@ async def live_debris():
 PORT = 8000
 
 if __name__ == "__main__":
-    print(f"SIDEWALL on http://localhost:{PORT}  (phones: http://{lan_ip()}:{PORT})")
+    # --tunnel (or SIDEWALL_TUNNEL=1): a public https address via Cloudflare, so phones work on any network.
+    if "--tunnel" in sys.argv or os.environ.get("SIDEWALL_TUNNEL") == "1":
+        tunnel.start(PORT)
+    print(f"Lightning Response on http://localhost:{PORT}  (phones: http://{lan_ip()}:{PORT})")
     uvicorn.run(app, host="0.0.0.0", port=PORT)

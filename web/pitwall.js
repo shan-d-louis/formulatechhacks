@@ -1,4 +1,4 @@
-// SIDEWALL pit wall. Two modes share the same rendering:
+// Lightning Response pit wall. Two modes share the same rendering:
 //   replay: plays back pre-analysed frames of a real race (4 Hz), with a timeline and key moments
 //   live:   merges a fast car-state stream (10 Hz: position, pedals, tyre sensors) with analysed frames
 //           (2 Hz: risk, explanations, health, pit call) from the phone-driven simulator
@@ -21,6 +21,9 @@ let data = null, frames = [], idx = 0, playing = false, simT = 0, lastTs = null;
 let liveState = null, liveFrame = null, drivers = 0;
 let ttsOn = false, lastLevel = -1, lastRadio = "", prevOn = {};
 let ws = null, pins = [];
+let crash = null;
+// Live mode: the alert the server pushed to the driver's phone, per event (level 0 none, 1 warn, 2 brace).
+const driverAlerts = { lockup: { level: 0, text: "", p: 0 }, wheelspin: { level: 0, text: "", p: 0 } };   // the car crashed / a tyre failed: {kind, text, x, y, t}; shown on the map and in the banner
 
 // ---------------------------------------------------------------- helpers
 const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -84,7 +87,16 @@ function tile(w, t, sensorVals) {
 }
 function renderTyres(frame) {
   const sensors = MODE === "live" && liveState ? liveState.sensors : null;
-  for (const w of WHEELS) $(`tile_${w}`).innerHTML = tile(w, frame.tyres[w], sensors ? sensors[w] : null);
+  for (const w of WHEELS) {
+    const t = frame.tyres[w], s = sensors ? sensors[w] : null;
+    $(`tile_${w}`).innerHTML = tile(w, t, s);
+    // Light the matching wheel on the car drawing: temperature colour, flashing when the tyre is flagged.
+    const [status, col] = tempStatus(s ? s.surface : t.surface);
+    const wheel = $(`wheel_${w}`);
+    wheel.style.color = col;
+    wheel.classList.toggle("alert", !!(t.flags.deflation || t.flags.slow_puncture || t.flags.flat_spot));
+    wheel.title = `${WNAME[w]}: ${status}`;
+  }
   const measured = MODE === "live";
   $("tyreSource").className = `tag ${measured ? "sensor" : "est"}`;
   $("tyreSource").textContent = measured ? "tyre sensors" : "AI estimate";
@@ -119,10 +131,16 @@ function renderRisk(frame) {
         ${g.condition_loss_pct >= 3 ? `<div class="sub">tyre temperature / pressure are costing ${Math.round(g.condition_loss_pct)}% of their grip right now</div>` : ""}
       </div>` : "";
     const hot = (e.p_avg || 0) >= 0.08;
-    el.className = `risk${hot ? " hot" : ""}`;
+    // Alert colour for the whole box: happening or high risk > pit stop called > raised risk.
+    const p = e.p || 0, boxCall = ((frame.call || {}).level || 0) >= 2;
+    const da = MODE === "live" ? driverAlerts[k].level : 0;
+    const [alert, alertTxt] = da === 2 ? ["crit", "BRACE · SENT TO DRIVER"] : da === 1 ? ["high", "WARNING · SENT TO DRIVER"]
+      : e.on || p >= 0.30 ? ["crit", e.on ? "" : "HIGH RISK"]
+      : boxCall ? ["box", "PIT STOP CALLED"] : p >= 0.10 || hot ? ["warn", "WATCH"] : ["", ""];
+    el.className = `risk${hot ? " hot" : ""}${alert ? ` alert-${alert}` : ""}`;
     const src = e.src === "sensor" ? "wheel-speed sensor" : e.src === "sensor+ml" ? "sensor + AI" : "AI";
     el.innerHTML = `
-      <div class="top"><span class="name">${name} ${e.on ? `<span class="flash">HAPPENING · ${src}</span>` : ""}</span>
+      <div class="top"><span class="name">${name} ${e.on ? `<span class="flash">HAPPENING · ${src}</span>` : ""}${alertTxt ? `<span class="alert-tag">${alertTxt}</span>` : ""}</span>
         <span class="pct" style="color:${(e.p || 0) > .3 ? "#ff2a4b" : (e.p || 0) > .1 ? "#ffc233" : "#f8fafc"}">${pct(e.p)}</span></div>
       ${gripHtml}
       <div class="stackbar">${bar}</div>
@@ -147,6 +165,50 @@ function renderBanner(frame, t) {
     publishCall(frame);
   }
   if (c.radio && c.radio !== lastRadio) { speak(c.radio); lastRadio = c.radio; }
+  crashBanner();
+}
+function crashBanner() {
+  if (!crash) return;
+  $("banner").className = "banner l3";
+  $("callText").textContent = crash.kind === "failure" ? "TYRE FAILURE" : "CRASH";
+  $("callWhy").textContent = crash.text;
+  $("callRadio").textContent = "";
+}
+function setCrash(info, t) {
+  const fresh = !crash || crash.t !== info.t;
+  crash = info;
+  const o = $("crashOverlay");
+  o.hidden = false; o.classList.toggle("failure", info.kind === "failure");
+  $("crashTitle").textContent = info.kind === "failure" ? "💥 TYRE FAILURE" : "💥 CRASH";
+  $("crashText").textContent = info.text;
+  if (fresh) {
+    logLine(t ?? 0, `<b>💥 ${info.kind === "failure" ? "Tyre failure" : "Crash"}</b> ${info.text}`, "#ff2a4b");
+    speak(info.kind === "failure" ? "Tyre failure." : "Crash, crash.");
+  }
+  crashBanner();
+}
+function onDriverAlert(msg) {
+  for (const [k, a] of Object.entries(msg.alerts)) {
+    if (!driverAlerts[k]) continue;
+    if (a.level > driverAlerts[k].level)
+      logLine(liveState ? liveState.t : msg.t, `<b>📱 ${a.level === 2 ? "BRACE" : "Warning"} sent to driver</b> ${a.text} (${Math.round(100 * a.p)}%)`, a.level === 2 ? "#ff2a4b" : "#ffc233");
+    driverAlerts[k] = { level: a.level, text: a.text, p: a.p };
+  }
+  renderDriverAlert();
+}
+function renderDriverAlert() {
+  const [k, a] = Object.entries(driverAlerts).sort((x, y) => y[1].level - x[1].level)[0];
+  const el = $("driverAlert");
+  el.hidden = !a.level;
+  if (a.level) {
+    el.className = `driver-alert ${a.level === 2 ? "brace" : "warn"}`;
+    el.textContent = `📱 Driver sees: ${a.level === 2 ? "‼" : "⚠"} ${a.text}`;
+  }
+  if (liveFrame) renderRisk(liveFrame);
+}
+function clearCrash() {
+  if (!crash) return;
+  crash = null; $("crashOverlay").hidden = true; lastLevel = -1;
 }
 function publishCall(frame) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "call", ...frame.call, lap: frame.lap && frame.lap.lap,
@@ -232,6 +294,15 @@ function renderMap(x, y, level) {
   if (!bounds) return;
   if (!mapBg) mapBg = buildMapBg();
   mctx.drawImage(mapBg, 0, 0);
+  if (crash) {                                         // a red burst where it happened
+    const [bx, by] = toPx(crash.x, crash.y), d0 = devicePixelRatio;
+    mctx.save(); mctx.strokeStyle = "#ff2a4b"; mctx.lineWidth = 3 * d0; mctx.lineCap = "round";
+    for (let k = 0; k < 8; k++) {
+      const a = k * Math.PI / 4, r0 = 7 * d0, r1 = (k % 2 ? 13 : 19) * d0;
+      mctx.beginPath(); mctx.moveTo(bx + r0 * Math.cos(a), by + r0 * Math.sin(a)); mctx.lineTo(bx + r1 * Math.cos(a), by + r1 * Math.sin(a)); mctx.stroke();
+    }
+    mctx.restore();
+  }
   for (const p of pins) { const [px, py] = toPx(p.x, p.y); mctx.fillStyle = p.c; mctx.beginPath(); mctx.arc(px, py, (p.r || 3.5) * devicePixelRatio, 0, 7); mctx.fill(); }
   const [cx, cy] = toPx(x, y);
   // Point the car along its direction of travel; ignore sub-pixel jitter so it doesn't spin when slow.
@@ -242,10 +313,10 @@ function renderMap(x, y, level) {
   const d = devicePixelRatio;
   // A glow in the call colour under the car keeps the OK / manage / box level visible at a glance.
   mctx.fillStyle = LEVEL_COLOR[level || 0]; mctx.globalAlpha = 0.45;
-  mctx.beginPath(); mctx.arc(cx, cy, 17 * d, 0, 7); mctx.fill();
+  mctx.beginPath(); mctx.arc(cx, cy, 27 * d, 0, 7); mctx.fill();
   mctx.globalAlpha = 1;
   if (CAR_IMG.complete && CAR_IMG.naturalWidth) {
-    const len = 36 * d, wid = len * CAR_IMG.naturalWidth / CAR_IMG.naturalHeight;
+    const len = 56 * d, wid = len * CAR_IMG.naturalWidth / CAR_IMG.naturalHeight;
     mctx.save(); mctx.translate(cx, cy);
     mctx.rotate(carHeading - Math.PI / 2);  // the image's nose points down (+y)
     mctx.drawImage(CAR_IMG, -wid / 2, -len / 2, wid, len);
@@ -294,6 +365,11 @@ function renderReplay(i) {
   $("lap").textContent = f.lap ? f.lap.lap : "–";
   $("age").textContent = f.lap && f.lap.tyre_life != null ? `${f.lap.tyre_life} laps` : "–";
   noteEvents(f, t);
+  const fe = data.failure;                 // the real failure, found in the telemetry by the server
+  if (fe && f.t >= fe.t) {
+    setCrash(fe, fe.t - frames[0].t);
+    $("crashSub").textContent = `Lap ${fe.lap}, from about ${fe.speed_before_kmh} km/h · real telemetry`;
+  } else clearCrash();
   renderBanner(f, t); renderTyres(f); renderRisk(f); renderLife(f); renderMap(f.x, f.y, f.call.level);
   $("fill").style.width = `${100 * i / (frames.length - 1)}%`;
   $("tlLabel").textContent = `${fmtT(t)} / ${fmtT(frames.at(-1).t - frames[0].t)}`;
@@ -359,7 +435,19 @@ function renderLiveState() {
   $("clock").textContent = `lap ${s.lap} · ${s.lap_time.toFixed(1)} s` + (s.best_lap ? ` · best ${s.best_lap.toFixed(2)}` : "");
   renderTelemetry(s);
   $("lap").textContent = s.lap; $("age").textContent = `${s.tyre_life} laps`;
-  $("driverMode").innerHTML = s.mode === "driver" ? `<span style="color:var(--ok)">● Driver on the phone is in control</span>` : `<span class="muted">Autopilot driving. Scan the driver code to take over.</span>`;
+  const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  $("driverMode").innerHTML = s.mode === "scenario" && s.scenario
+    ? `<span style="color:var(--advise)">● Scenario: ${esc(s.scenario.label)}, step ${Math.min(s.scenario.index + 1, s.scenario.n)}/${s.scenario.n}: ${esc(s.scenario.step)}</span>`
+    : s.mode === "driver" ? `<span style="color:var(--ok)">● Driver on the phone is in control</span>` : `<span class="muted">Autopilot driving. Scan the driver code to take over.</span>`;
+  if (s.alerts) {                          // the 10 Hz state clears alerts (new tyres, recovery, crash)
+    let changed = false;
+    for (const k of Object.keys(driverAlerts)) if ((s.alerts[k] || 0) < driverAlerts[k].level) { driverAlerts[k].level = s.alerts[k] || 0; changed = true; }
+    if (changed) renderDriverAlert();
+  }
+  if (s.crash) {
+    setCrash(s.crash, s.crash.t);
+    $("crashSub").textContent = `The car has stopped. Recovering to the pits in ${Math.max(0, Math.ceil((s.crash.recover_s ?? 8) - (s.t - s.crash.t)))} s…`;
+  } else clearCrash();
   const level = liveFrame ? liveFrame.call.level : 0;
   renderMap(s.x, s.y, level);
   if (liveFrame) renderTyres(liveFrame);
@@ -376,9 +464,7 @@ async function startLive() {
   const r = await (await fetch("/api/live/start", { method: "POST" })).json();
   data = { track: r.track, laps: [], scenario: { title: r.circuit } };
   fitMap();
-  const lan = await (await fetch("/api/lan")).json();
-  $("qrDriverImg").src = "/api/qr?path=/driver";
-  $("driverUrl").textContent = `(${lan.base}/driver)`;
+  refreshDriverQr();
   $("liveHint").textContent = `${r.circuit}: racing line and grip limits from a real F1 lap.`;
 }
 
@@ -392,27 +478,48 @@ function connect() {
     else if (msg.type === "presence") {
       if (msg.driver > drivers) closeOnboard();   // a phone just joined as the driver
       drivers = msg.driver;
-      $("dotDriver").className = `dot${msg.driver ? " live" : ""}`; $("dotCrew").className = `dot${msg.crew ? " live" : ""}`;
+      $("dotDriver").className = `dot${msg.driver ? " live" : ""}`;
     } else if (msg.type === "notice") { toast(msg.text); logLine(liveState ? liveState.t : 0, msg.text, "#94a3b8"); }
-    else if (msg.type === "crew_ack") toast("✔ Pit crew acknowledged the call");
+    else if (msg.type === "scenario_result") {   // how early the pit wall saw the scripted hazard coming
+      toast(`🎯 ${msg.text}`);
+      logLine(liveState ? liveState.t : 0, `🎯 ${msg.text}`, msg.warned && (msg.lead_s ?? 1) > 0 ? "#2fd27a" : "#ffc233");
+    }
+    else if (msg.type === "new_tyres") onNewTyres("🛞 Driver boxed: fresh tyres fitted");
+    else if (msg.type === "driver_alert" && MODE === "live") onDriverAlert(msg);
+    else if (msg.type === "crash" && MODE === "live") { setCrash(msg, msg.t); toast(`💥 ${msg.text}`); }
+    else if (msg.type === "recovered" && MODE === "live") { clearCrash(); onNewTyres(`🛞 ${msg.text}`); }
   };
   ws.onclose = () => setTimeout(connect, 1500);
 }
 async function showQr(path) {
-  const r = await fetch(`/api/qr?path=${path}`);
+  const r = await fetch(`/api/qr?path=${path}&t=${Date.now()}`, { cache: "no-store" });
   $("qrimg").src = URL.createObjectURL(await r.blob()); $("qrurl").textContent = r.headers.get("X-URL");
   $("qrbox").hidden = false;
 }
 $("qrClose").onclick = () => $("qrbox").hidden = true;
-$("qrCrew").onclick = () => showQr("/crew");
-$("qrDriver").onclick = () => { $("onboard").hidden = false; };
+// The driver QR code is fetched fresh whenever the panel is shown, and re-checked every 10 s while it is open:
+// the laptop's address changes when it reconnects to Wi-Fi or a hotspot.
+let qrUrl = "";
+async function refreshDriverQr() {
+  try {
+    const r = await fetch(`/api/qr?path=/driver&t=${Date.now()}`, { cache: "no-store" });
+    const url = r.headers.get("X-URL") || "";
+    if (url === qrUrl) return;
+    qrUrl = url;
+    $("qrDriverImg").src = URL.createObjectURL(await r.blob());
+    $("driverUrl").textContent = `(${url})`;
+  } catch (_) { /* server restarting: the next check retries */ }
+}
+setInterval(() => { if (MODE === "live" && !$("onboard").hidden) refreshDriverQr(); }, 10000);
+$("qrDriver").onclick = () => { $("onboard").hidden = false; refreshDriverQr(); };
 function closeOnboard() { $("onboard").hidden = true; }
 $("skipOnboard").onclick = closeOnboard;
 $("onboard").onclick = (e) => { if (e.target === e.currentTarget) closeOnboard(); };
 addEventListener("keydown", (e) => { if (e.key === "Escape") closeOnboard(); });
 $("tts").onclick = () => { ttsOn = !ttsOn; $("tts").classList.toggle("on", ttsOn); $("tts").textContent = ttsOn ? "🔊 Radio on" : "🔈 Radio off"; };
 $("debris").onclick = async () => { const r = await (await fetch("/api/live/debris", { method: "POST" })).json(); if (r.ok) { toast(`💥 ${WNAME[r.wheel].toLowerCase()} picked up a cut: watch the air-loss detector`); logLine(liveState ? liveState.t : 0, `💥 debris: ${WNAME[r.wheel].toLowerCase()} cut (what-if)`, "#ffc233"); } };
-$("newTyres").onclick = async () => { await fetch("/api/live/reset", { method: "POST" }); pins = []; lastLevel = -1; $("log").innerHTML = ""; toast("Fresh tyres fitted at blanket temperature (70°C)"); };
+function onNewTyres(text) { pins = []; lastLevel = -1; $("log").innerHTML = ""; toast(text); }
+$("newTyres").onclick = async () => { await fetch("/api/live/reset", { method: "POST" }); onNewTyres("Fresh tyres fitted at blanket temperature (70°C)"); };
 $("play").onclick = () => {
   if (!frames.length) return;
   if (idx >= frames.length - 1) seek(0);

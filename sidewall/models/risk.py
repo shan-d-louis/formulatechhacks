@@ -276,6 +276,7 @@ def simulate_calibration(runs: int = 24, seconds: float = 150.0, seed: int = 0) 
     parts = []
     for run in range(runs):
         sim = TyreSim(profile, seed=int(rng.integers(1e9)))
+        sim.crashes = False                                       # a crashed car would stand still: no signal
         for w in WHEELS:                                          # set-ups from 2 psi under to 2 psi over
             sim.p_cold[w] += float(rng.uniform(-2.0, 2.0))
         if rng.random() < 0.3:
@@ -333,8 +334,13 @@ def calibrate_sim(bundle: dict, runs: int = 24) -> dict:
 
 
 if __name__ == "__main__":
+    import sys
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    bundle, metrics = train_acgym()
+    if "--sim-only" in sys.argv:
+        # Recalibrate only the live simulator car (Stage 2 "sim"); the Assetto Corsa models are left as they are.
+        bundle, metrics = joblib.load(OUT), json.loads(METRICS.read_text())
+    else:
+        bundle, metrics = train_acgym()
     metrics["sim"] = calibrate_sim(bundle)
     joblib.dump(bundle, OUT)
     METRICS.write_text(json.dumps(metrics, indent=2))
