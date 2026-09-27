@@ -14,7 +14,7 @@ import health
 import laps
 import main
 from state import TireState
-from tests.test_passthrough import RAW
+from backend.tests.test_passthrough import RAW
 
 
 @pytest.fixture(autouse=True)

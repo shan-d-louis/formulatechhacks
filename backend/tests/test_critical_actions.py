@@ -14,7 +14,7 @@ import actions
 import config
 import features
 import main
-from tests.test_passthrough import RAW
+from backend.tests.test_passthrough import RAW
 
 
 @pytest.fixture(autouse=True)
