@@ -29,7 +29,7 @@ Lightning Response watches every tyre in real time. It detects lock-ups, wheelsp
 | **Safety diagnosis** | Real-time per-tyre health (0–100) and an escalating pit call. Lock-up and wheelspin warnings come 0.5–1.75 s early, and the safe-laps bound is ready before the cliff arrives. Silverstone 2020 is called BOX 15 laps before the real failure. |
 | **Data-driven** | Six seasons of public F1 data (2018–2021, 2024–2025: 127 races, 4,990 stints, 138,683 laps) turned into a tyre-safety dataset, and a **data-driven stint limit for 33 circuits**, set from data before anything breaks. |
 | **Reliable AI** | Calibrated, explained early-warning models trained on simulator ground truth and run on real F1 telemetry, a virtual tyre sensor, and survival models with a conformally calibrated safe-laps bound. |
-| **End-to-end connection** | The driver's phone is the car's pedals and receives risk alerts, over any network through a Cloudflare tunnel. |
+| **End-to-end connection** | The driver's phone is the car's pedals and receives risk alerts, over any network through a self-healing Cloudflare tunnel. |
 
 ### How the prediction works
 ```
@@ -106,6 +106,7 @@ The car crashes and stops dead when it goes **off the track** (too fast for a co
 
 ## Challenges we ran into
 - **Phones on any network.** Phones normally reach the laptop over the local Wi-Fi, which fails on networks that block device-to-device traffic (eduroam, most venue Wi-Fi) and breaks whenever the laptop reconnects. A Cloudflare quick tunnel gives the server a public `https://…trycloudflare.com` address instead, and the QR code on screen always points to it.
+- **Tunnels that die quietly.** During testing the tunnel's address vanished after the laptop changed networks, while `cloudflared` kept running, so the QR code pointed nowhere. We added a watchdog that loads the app through its own public address every 30 s (resolving it with Cloudflare's DNS so a campus DNS cache can't fool it) and starts a new tunnel after two failed checks. The QR code switches to the new link by itself; in testing, a killed tunnel was replaced in about 5 seconds.
 - **No tyre sensors in public data.** FastF1 has speed, pedals and position, but no tyre temperature, pressure or wheel speed. We had to build a virtual tyre sensor and train the early warnings on simulator data where every wheel's slip is recorded, using only signals a public F1 feed also has.
 - **Getting warnings to arrive in time.** A 0.5 s warning is useless if it reaches the driver 0.5 s late. Lining the analysis up with each new data frame cut alert delay from about 0.56 s to 0.43 s.
 
@@ -115,7 +116,7 @@ The car crashes and stops dead when it goes **off the track** (too fast for a co
 - **Probabilities you can trust.** When the model says 20% risk, it happens about 1 time in 5 (calibration error 0.1–0.2%). Our "safe laps left" promise held 93% of the time on the unseen 2025 season, against a 90% target.
 - **Seeing what public data can't.** Our virtual tyre sensor estimates tyre temperature within 6–9 °C on a track it never saw, 40–50% better than a naive estimate, and pressure within 0.98 psi.
 - **Beating overfitting.** Our first tyre-life model memorised races; we cut the gap between training and test scores from 0.15 to 0.05 while keeping test accuracy.
-- **A complete, live system.** A judge's phone becomes the pedals, over any network; risk updates 4 times a second, BRACE alerts reach the driver in 0.3–0.4 s, and crashes stop the car. It's backed by 287 automated tests.
+- **A complete, live system.** A judge's phone becomes the pedals, over any network; risk updates 4 times a second, BRACE alerts reach the driver in 0.3–0.4 s, and crashes stop the car. The connection heals itself if the tunnel dies. It's backed by 293 automated tests.
 
 ## What we learned
 - **Random data splits lie.** Our first model scored 0.997 on training data but 0.85 on held-out seasons; weather columns alone identified individual races. We now split by season, use only information available at that point in the race, and retrain the replay models without the season being replayed.

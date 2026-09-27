@@ -515,7 +515,7 @@ def qr(request: Request, path: str = "/crew"):
 
 @app.get("/api/lan")
 def lan(request: Request):
-    return {"base": phone_base(request), "tunnel": tunnel.public_url() is not None}
+    return {"base": phone_base(request), **tunnel.status()}
 
 
 # ------------------------------------------------------------------ websockets

@@ -87,6 +87,15 @@ The address appears in the console after a few seconds and changes on every star
 by itself (it is never cached, and re-checked every 10 s while the Driver phone panel is open). Without the tunnel,
 the QR code falls back to the laptop's local-network address. `SIDEWALL_PUBLIC_URL` overrides both.
 
+**The tunnel heals itself.** Quick tunnels can die while `cloudflared` keeps running (for example after the laptop
+changes networks: the address disappears and the QR code would point nowhere). A watchdog loads `/health` through
+the public address every 30 s, looking the name up with Cloudflare's DNS-over-HTTPS so a campus resolver's cached
+"no such name" for a fresh tunnel can't fool it. After 2 failed checks in a row, or if `cloudflared` exits, it starts
+a new tunnel; the QR code uses the local-network address meanwhile and switches to the new link within 10 s. Repeated
+restarts back off (up to 5 minutes apart) when there is no internet. `/api/lan` reports `restarts` and the time of
+the last successful check (`last_ok`). Phones already connected need to rescan after a restart. In testing, killing
+the tunnel produced a working new link in about 5 s.
+
 ## The pit wall
 - **Banner:** the one call the crew needs (OK, MANAGE, BOX THIS LAP, BOX NOW), with its reasons and the radio message.
   Level 1 is called ADVISE in the engine and on the phones.
@@ -289,7 +298,7 @@ accuracy the same or better.
 ```
 sidewall/                 the full-stack app
   server/app.py           FastAPI: pages, APIs, WebSockets, live session, QR codes
-  server/tunnel.py        optional Cloudflare quick tunnel for phones
+  server/tunnel.py        optional Cloudflare quick tunnel for phones, with a self-healing watchdog
   server/feedback.py      runtime feedback loop (see below)
   server/jobs.py          background jobs (replay rebuilds, feedback)
   sources/sim.py          live simulator physics, sensors and crashes
@@ -367,7 +376,7 @@ uv run pytest -q
 
 ## Testing
 ```bash
-uv run pytest -q                  # everything (287 tests)
+uv run pytest -q                  # everything (293 tests)
 uv run pytest -q tests            # full app: detectors, sim physics, scenarios, crashes, server API, splits
 uv run pytest -q backend/tests    # lower-level backend
 ```
