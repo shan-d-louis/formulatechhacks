@@ -24,10 +24,19 @@ from sidewall.sources.sim import WHEELS, TyreSim, track_profile
 
 SIM_HZ = 20
 STATE_EVERY = 2            # publish car state every 2 physics steps (10 Hz)
-ANALYSE_EVERY_S = 0.5
+ANALYSE_EVERY_S = 0.25     # one analysis per 4 Hz frame: a new risk update (and driver alert) 4 times a second
+ANALYSE_MIN_GAP_S = 0.05   # always leave the event loop this much breathing room between runs
 DRIVER_TIMEOUT_S = 2.0
 MAX_SESSION_S = 30 * 60    # keep the buffer bounded: reset the stint after 30 minutes
 CRASH_HOLD_S = 8.0         # a crashed car stands still this long, then is recovered to the pits on fresh tyres
+
+# Driver alerts from the next-second risk: level 1 "warn" (high chance: counteract), level 2 "brace" (imminent, or
+# already happening). Thresholds are per event, set on this simulator so tidy driving rarely triggers them: lock-up
+# risk here peaks around 0.3-0.4 before a lock-up; wheelspin risk sits above 0.6 for ~10 % of tidy driving.
+ALERT_P = {"lockup": (0.30, 0.50), "wheelspin": (0.80, 0.95)}
+ALERT_HOLD_S = 1.0         # an alert stays up at least this long, so it doesn't flicker
+ALERT_TEXT = {"lockup": ("Lock-up risk: ease off the brake", "Lock-up imminent: brace"),
+              "wheelspin": ("Wheelspin risk: ease off the throttle", "Wheelspin imminent: brace")}
 
 
 class LiveSession:
@@ -54,8 +63,10 @@ class LiveSession:
         self.last_driver_msg = 0.0
         self.input_seq = 0
         self.latest_frame: dict | None = None
+        self._tables: tuple[pd.DataFrame, pd.DataFrame] | None = None   # stream/measured so far, grown in place
         self.generation = getattr(self, "generation", 0) + 1   # lets an in-flight analysis see it is stale
         self.scenario: ScenarioRunner | None = None
+        self.alerts = {k: {"level": 0, "p": 0.0, "until": 0.0} for k in ALERT_P}
         self.watch: ScenarioWatch | None = None
 
     def pit_stop(self):
@@ -170,11 +181,15 @@ class LiveSession:
 
     async def analysis_loop(self):
         while True:
-            await asyncio.sleep(ANALYSE_EVERY_S)
+            # Run as soon as the next 4 Hz analysis frame exists (one physics step past its grid time), so a new
+            # event waits at most one frame, not a frame plus a timer that is out of step with it.
+            while self.sim.t < self.last_frame_t + ANALYSE_EVERY_S + 1.0 / SIM_HZ:
+                await asyncio.sleep(0.01)
             try:
                 await self._analyse()
             except Exception as e:  # keep the session alive; report the problem to the pit wall
                 await self.publish("pitwall", {"type": "notice", "text": f"analysis error: {e}"})
+            await asyncio.sleep(ANALYSE_MIN_GAP_S)
 
     async def _publish_state(self, r: dict):
         s = self.sim
@@ -187,6 +202,7 @@ class LiveSession:
             "mode": "driver" if self.driver_active else "autopilot",
             "scenario": self.scenario.status() if self.scenario else None,
             "crash": s.crashed,
+            "alerts": {k: a["level"] for k, a in self.alerts.items()},
             "lap": s.lap, "lap_time": round(s.t - s.lap_start_t, 2),
             "last_lap": round(s.lap_times[-1], 2) if s.lap_times else None,
             "best_lap": round(min(s.lap_times), 2) if s.lap_times else None,
@@ -222,14 +238,14 @@ class LiveSession:
         n = len(self.rows)
         if n < 40:
             return
-        stream = pd.DataFrame(self.rows[:n])
-        measured = pd.DataFrame(self.measured[:n])
+        stream, measured = self._tables_upto(n)
         frames = await asyncio.to_thread(self.monitor.frame_outputs, stream, measured, self.last_frame_t)
         if gen != self.generation:                 # tyres changed while we were analysing the old set
             return
         if frames is None or frames.empty:
             return
         frame = None
+        peak = {k: (0.0, False) for k in ALERT_P}           # highest risk / any event in this batch of frames
         for r in frames.itertuples(index=False):
             lap = dict(self.lap_info) if self.lap_info else {}
             lap.update({"lap": float(self.sim.lap), "tyre_life": float(self.sim.tyre_life),
@@ -238,6 +254,13 @@ class LiveSession:
             self.last_frame_t = r.t
             if self.watch:
                 self.watch.on_frame(frame)
+            for k in ALERT_P:
+                e = frame["events"][k]
+                peak[k] = (max(peak[k][0], float(e.get("p") or 0)), peak[k][1] or bool(e.get("on")))
+        if self._update_alerts(peak):
+            msg = self._alert_msg()
+            await self.publish("driver", msg)
+            await self.publish("pitwall", msg)
         frame["mode"] = "driver" if self.driver_active else "autopilot"
         frame["lap_times"] = [round(x, 2) for x in self.sim.lap_times]
         frame["truth"] = {k: bool(self.truth.get(k)) for k in ("lockup", "wheelspin", "slide", "off")}
@@ -250,6 +273,40 @@ class LiveSession:
             await self.publish("driver", res)
         if self.n_laps_seen > prev_laps:
             await self.publish("pitwall", {"type": "feedback_lap", "frame": self.latest_frame})
+
+    def _tables_upto(self, n: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """The session so far as DataFrames. Only rows added since the last call are converted (rebuilding the whole
+        session each time grew to ~0.2 s after 15 minutes)."""
+        have = 0 if self._tables is None else len(self._tables[0])
+        if have > n:                                   # the session was reset underneath us
+            self._tables, have = None, 0
+        if have < n:
+            new = (pd.DataFrame(self.rows[have:n]), pd.DataFrame(self.measured[have:n]))
+            self._tables = new if self._tables is None else tuple(
+                pd.concat([old, add], ignore_index=True) for old, add in zip(self._tables, new))
+        return self._tables
+
+    def _update_alerts(self, peak: dict) -> bool:
+        """Set each event's alert level from this batch's peak risk; returns True when anything changed."""
+        now, changed = self.sim.t, False
+        for k, (p, on) in peak.items():
+            warn, brace = ALERT_P[k]
+            level = 0 if self.sim.crashed else 2 if on or p >= brace else 1 if p >= warn else 0
+            a = self.alerts[k]
+            if level >= a["level"] or now >= a["until"]:        # rise at once; fall only after the hold
+                if level > 0:
+                    a["until"] = now + ALERT_HOLD_S
+                if level != a["level"]:
+                    changed = True
+                a["level"] = level
+            a["p"] = round(p, 3)
+        return changed
+
+    def _alert_msg(self) -> dict:
+        return {"type": "driver_alert", "t": round(self.sim.t, 2),
+                "alerts": {k: {"level": a["level"], "p": a["p"],
+                               "text": ALERT_TEXT[k][a["level"] - 1] if a["level"] else ""}
+                           for k, a in self.alerts.items()}}
 
     # ---------------------------------------------------------------- lifecycle
     def start(self):

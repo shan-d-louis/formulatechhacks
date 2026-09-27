@@ -94,6 +94,18 @@
   .rot { font-size: 13px; color: var(--advise); }
   .release { position: fixed; bottom: 14px; left: 16px; z-index: 3; font-size: 12px; opacity: .85; }
   .shake { animation: shake .18s; } @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  /* Driver alert from the next-second risk: warn = counteract now, brace = imminent. Sits over the top of the cluster. */
+  .risk-alert { position: fixed; left: 50%; top: 4px; transform: translateX(-50%); z-index: 4; width: min(560px, calc(100% - 24px));
+    display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 14px; border-radius: 14px;
+    text-align: center; pointer-events: none; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+  .risk-alert[hidden] { display: none; }
+  .risk-alert b { font-size: clamp(18px, 5vw, 26px); font-weight: 900; letter-spacing: .08em; }
+  .risk-alert span { font-size: clamp(14px, 3.6vw, 18px); font-weight: 700; }
+  .risk-alert.warn { background: #ffc233; color: #1a1300; }
+  .risk-alert.brace { background: #ff2a4b; color: #fff; animation: bracePulse .5s infinite; }
+  @keyframes bracePulse { 50% { transform: translateX(-50%) scale(1.04); } }
+  body.brace { box-shadow: inset 0 0 0 8px #ff2a4b; }
+  @media (prefers-reduced-motion: reduce) { .risk-alert.brace { animation: none; } }
   .flash-lock { box-shadow: inset 0 0 0 6px #ff2a4b; } .flash-spin { box-shadow: inset 0 0 0 6px #2fd27a; }
 </style>
 </head>
@@ -103,6 +115,7 @@
     <div class="mid"><span class="call" id="call">–</span><div class="adv" id="adv">Steering is automatic: you control the pedals.</div></div>
     <div class="lapt">lap <span id="lap">–</span><br><b id="lapt">–</b></div>
   </div>
+  <div class="risk-alert" id="riskAlert" role="alert" hidden><b id="raTitle"></b><span id="raText"></span></div>
   <div class="cluster">
     <div class="pedal" id="brake"><div class="fill"></div><div class="lbl">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5.5"/><path d="M5 5.5a9 9 0 0 0 0 13M19 5.5a9 9 0 0 1 0 13"/></svg>
@@ -160,9 +173,11 @@ function connect() {
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.type === "crash") { navigator.vibrate?.([400, 100, 400]); return; }
+    if (m.type === "driver_alert") { onDriverAlert(m.alerts); return; }
     if (m.type === "scenario_result" || m.type === "scenario_error") { showScenarioNote(m.text, m.type === "scenario_result"); return; }
     if (m.type !== "state") return;
     renderScenario(m.scenario);
+    if (m.alerts) syncAlerts(m.alerts, !!m.crash);
     $("spd").textContent = Math.round(m.speed); $("gear").textContent = `gear ${m.gear}`;
     gauge.target = m.speed; gauge.gear = `GEAR ${m.gear}`; gauge.srvThr = m.throttle || 0; gauge.srvBrk = m.brake || 0;
     $("lap").textContent = m.lap; $("lapt").textContent = m.lap_time.toFixed(1);
@@ -310,6 +325,39 @@ document.addEventListener("contextmenu", (e) => e.preventDefault());
 const orient = () => { $("rot").hidden = innerWidth > innerHeight; };
 addEventListener("resize", orient); orient();
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && driving) { state.throttle = state.brake = 0; sendInput(true); } });
+// ---------- Driver alerts: pushed by the server the moment the next-second risk crosses a threshold ----------
+const ALERT_NAME = { lockup: "LOCK-UP", wheelspin: "WHEELSPIN" };
+const alertState = { lockup: { level: 0, text: "" }, wheelspin: { level: 0, text: "" } };
+function onDriverAlert(alerts) {
+  let rose = 0;
+  for (const [k, a] of Object.entries(alerts)) {
+    if (!alertState[k]) continue;
+    if (a.level > alertState[k].level) rose = Math.max(rose, a.level);
+    alertState[k] = { level: a.level, text: a.text };
+  }
+  if (rose === 2) navigator.vibrate?.([300, 80, 300, 80, 300]);
+  else if (rose === 1) navigator.vibrate?.(150);
+  showRiskAlert();
+}
+function syncAlerts(levels, crashed) {   // the 10 Hz state clears alerts (new tyres, recovery, crash)
+  let changed = false;
+  for (const k of Object.keys(alertState)) {
+    const lv = crashed ? 0 : (levels[k] || 0);
+    if (lv < alertState[k].level) { alertState[k].level = lv; changed = true; }
+  }
+  if (changed) showRiskAlert();
+}
+function showRiskAlert() {
+  const [k, a] = Object.entries(alertState).sort((x, y) => y[1].level - x[1].level)[0];   // the more severe one
+  const box = $("riskAlert");
+  document.body.classList.toggle("brace", a.level === 2);
+  if (!a.level) { box.hidden = true; return; }
+  const action = (a.text.split(":")[1] || "").trim();
+  box.className = `risk-alert ${a.level === 2 ? "brace" : "warn"}`;
+  $("raTitle").textContent = a.level === 2 ? `‼ ${ALERT_NAME[k]} IMMINENT` : `⚠ ${ALERT_NAME[k]} RISK`;
+  $("raText").textContent = a.level === 2 ? "BRACE" : action.charAt(0).toUpperCase() + action.slice(1);
+  box.hidden = false;
+}
 connect();
 </script>
 </body>

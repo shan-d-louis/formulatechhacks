@@ -21,7 +21,9 @@ let data = null, frames = [], idx = 0, playing = false, simT = 0, lastTs = null;
 let liveState = null, liveFrame = null, drivers = 0;
 let ttsOn = false, lastLevel = -1, lastRadio = "", prevOn = {};
 let ws = null, pins = [];
-let crash = null;   // the car crashed / a tyre failed: {kind, text, x, y, t}; shown on the map and in the banner
+let crash = null;
+// Live mode: the alert the server pushed to the driver's phone, per event (level 0 none, 1 warn, 2 brace).
+const driverAlerts = { lockup: { level: 0, text: "", p: 0 }, wheelspin: { level: 0, text: "", p: 0 } };   // the car crashed / a tyre failed: {kind, text, x, y, t}; shown on the map and in the banner
 
 // ---------------------------------------------------------------- helpers
 const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -131,7 +133,9 @@ function renderRisk(frame) {
     const hot = (e.p_avg || 0) >= 0.08;
     // Alert colour for the whole box: happening or high risk > pit stop called > raised risk.
     const p = e.p || 0, boxCall = ((frame.call || {}).level || 0) >= 2;
-    const [alert, alertTxt] = e.on || p >= 0.30 ? ["crit", e.on ? "" : "HIGH RISK"]
+    const da = MODE === "live" ? driverAlerts[k].level : 0;
+    const [alert, alertTxt] = da === 2 ? ["crit", "BRACE · SENT TO DRIVER"] : da === 1 ? ["high", "WARNING · SENT TO DRIVER"]
+      : e.on || p >= 0.30 ? ["crit", e.on ? "" : "HIGH RISK"]
       : boxCall ? ["box", "PIT STOP CALLED"] : p >= 0.10 || hot ? ["warn", "WATCH"] : ["", ""];
     el.className = `risk${hot ? " hot" : ""}${alert ? ` alert-${alert}` : ""}`;
     const src = e.src === "sensor" ? "wheel-speed sensor" : e.src === "sensor+ml" ? "sensor + AI" : "AI";
@@ -182,6 +186,25 @@ function setCrash(info, t) {
     speak(info.kind === "failure" ? "Tyre failure." : "Crash, crash.");
   }
   crashBanner();
+}
+function onDriverAlert(msg) {
+  for (const [k, a] of Object.entries(msg.alerts)) {
+    if (!driverAlerts[k]) continue;
+    if (a.level > driverAlerts[k].level)
+      logLine(liveState ? liveState.t : msg.t, `<b>📱 ${a.level === 2 ? "BRACE" : "Warning"} sent to driver</b> ${a.text} (${Math.round(100 * a.p)}%)`, a.level === 2 ? "#ff2a4b" : "#ffc233");
+    driverAlerts[k] = { level: a.level, text: a.text, p: a.p };
+  }
+  renderDriverAlert();
+}
+function renderDriverAlert() {
+  const [k, a] = Object.entries(driverAlerts).sort((x, y) => y[1].level - x[1].level)[0];
+  const el = $("driverAlert");
+  el.hidden = !a.level;
+  if (a.level) {
+    el.className = `driver-alert ${a.level === 2 ? "brace" : "warn"}`;
+    el.textContent = `📱 Driver sees: ${a.level === 2 ? "‼" : "⚠"} ${a.text}`;
+  }
+  if (liveFrame) renderRisk(liveFrame);
 }
 function clearCrash() {
   if (!crash) return;
@@ -416,6 +439,11 @@ function renderLiveState() {
   $("driverMode").innerHTML = s.mode === "scenario" && s.scenario
     ? `<span style="color:var(--advise)">● Scenario: ${esc(s.scenario.label)}, step ${Math.min(s.scenario.index + 1, s.scenario.n)}/${s.scenario.n}: ${esc(s.scenario.step)}</span>`
     : s.mode === "driver" ? `<span style="color:var(--ok)">● Driver on the phone is in control</span>` : `<span class="muted">Autopilot driving. Scan the driver code to take over.</span>`;
+  if (s.alerts) {                          // the 10 Hz state clears alerts (new tyres, recovery, crash)
+    let changed = false;
+    for (const k of Object.keys(driverAlerts)) if ((s.alerts[k] || 0) < driverAlerts[k].level) { driverAlerts[k].level = s.alerts[k] || 0; changed = true; }
+    if (changed) renderDriverAlert();
+  }
   if (s.crash) {
     setCrash(s.crash, s.crash.t);
     $("crashSub").textContent = `The car has stopped. Recovering to the pits in ${Math.max(0, Math.ceil((s.crash.recover_s ?? 8) - (s.t - s.crash.t)))} s…`;
@@ -457,6 +485,7 @@ function connect() {
       logLine(liveState ? liveState.t : 0, `🎯 ${msg.text}`, msg.warned && (msg.lead_s ?? 1) > 0 ? "#2fd27a" : "#ffc233");
     }
     else if (msg.type === "new_tyres") onNewTyres("🛞 Driver boxed: fresh tyres fitted");
+    else if (msg.type === "driver_alert" && MODE === "live") onDriverAlert(msg);
     else if (msg.type === "crash" && MODE === "live") { setCrash(msg, msg.t); toast(`💥 ${msg.text}`); }
     else if (msg.type === "recovered" && MODE === "live") { clearCrash(); onNewTyres(`🛞 ${msg.text}`); }
   };

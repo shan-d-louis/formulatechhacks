@@ -129,6 +129,7 @@ class TyreSim:
         # Set when the car crashes: {"kind": "off" | "tyre_failure", "wheel": w | None, "t", "x", "y", "text"}.
         # A crashed car stands still (tyres keep cooling) until the session recovers it.
         self.crashed: dict | None = None
+        self.crashes = True        # off for calibration runs, where a stopped car would only add junk data
 
     # ---------------------------------------------------------------- helpers
     def _at(self, arr):
@@ -193,7 +194,9 @@ class TyreSim:
             max_brk = 0.9 * long_avail * grip_f / (G * (1.6 + 3.6 * (v / 85.0) ** 2))
             return 0.0, float(np.clip(max_brk, 0.1, 1.0))
         max_thr = 0.9 * self._traction(long_avail, grip_r) / self._drive_max(v)
-        return float(np.clip(max_thr if v < need - 1 else 0.3, 0.0, 1.0)), 0.0
+        # Holding speed uses a light throttle, but never more than the rears can take (mid-corner at low speed a
+        # fixed 30 % spun them: the "tidy" driver had wheelspin within a second of ~13 % of moments).
+        return float(np.clip(max_thr if v < need - 1 else min(0.3, max_thr), 0.0, 1.0)), 0.0
 
     # ---------------------------------------------------------------- physics step
     def step(self, dt: float = 0.05) -> dict:
@@ -333,7 +336,7 @@ class TyreSim:
             for w in ("rl", "rr"):
                 kappa[w] = min(1.0, 0.18 + getattr(self, "_spin", 0.0))
         x, y = self._at(self.p["x"]), self._at(self.p["y"])
-        if not self.crashed:
+        if not self.crashed and self.crashes:
             self._check_crash(truth, x, y)
         truth["crash"] = bool(self.crashed)
         self.truth = truth

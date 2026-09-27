@@ -26,12 +26,14 @@ Since 2022 every F1 car has carried a standard FIA tyre-pressure sensor, but the
   including the moment each tyre really failed.
 - **Lets judges drive:** a phone becomes the pedals of a live simulated car; four scenario buttons force a lock-up,
   wheelspin, a pressure leak or overheating so the pit wall can be seen catching each one.
+- **Warns the driver directly:** when lock-up or wheelspin risk is high, the phone shows a warning with the action to
+  take; when it is imminent, it says BRACE.
 
 ## How it maps to the tracks
 | Track | What Lightning Response shows |
 |---|---|
 | **Track 1: Safety Diagnosis** | Real-time per-tyre health (0–100) and an escalating pit call. Lock-up and wheelspin warnings come 0.5–1.75 s early, and the safe-laps bound is ready before the cliff arrives. Silverstone 2020 is called BOX 15 laps before the real failure. |
-| **Ollon: data-driven** | Six seasons of public F1 data (2018–2021, 2024–2025: 127 races, 4,990 stints, 138,683 laps) turned into a tyre-safety dataset, and a **data-driven stint limit for all 34 circuits**: the Qatar rule, set before anything breaks. |
+| **Ollon: data-driven** | Six seasons of public F1 data (2018–2021, 2024–2025: 127 races, 4,990 stints, 138,683 laps) turned into a tyre-safety dataset, and a **data-driven stint limit for 33 circuits**: the Qatar rule, set before anything breaks. |
 | **Ampere: AI** | Calibrated, explained early-warning models trained on sim ground truth and run on real F1 telemetry, a virtual tyre sensor, and survival models with a conformally calibrated safe-laps bound. |
 | **TELUS: connected (bonus)** | The driver's phone is the car's pedals, over any network through a Cloudflare tunnel. |
 
@@ -66,7 +68,7 @@ uv run python -m sidewall.server.app
 | `/` | Home: choose a replay, the live simulator or the data |
 | `/pitwall?mode=replay` | Replay a real race (Silverstone 2020, Baku 2021) |
 | `/pitwall?mode=live` | Drive it yourself: the live simulator, driven from a phone |
-| `/driver` | The phone controller: brake and throttle, BOX, scenario buttons |
+| `/driver` | The phone controller: brake and throttle, BOX, scenario buttons, risk alerts |
 | `/atlas` | Explore the data: circuits, stint limits, survival curves, degradation, model scorecard and metrics plots |
 | `/crew` | Pit-crew phone view (no longer linked from the pit wall) |
 | `/docs` | FastAPI API docs |
@@ -99,12 +101,15 @@ the QR code falls back to the laptop's local-network address. `SIDEWALL_PUBLIC_U
 
   | Colour | When | Label |
   |---|---|---|
-  | Red, pulsing | the event is happening, or risk ≥ 30% | HAPPENING / HIGH RISK |
+  | Red, pulsing | live: BRACE sent to the driver; replay: the event is happening, or risk ≥ 30% | BRACE · SENT TO DRIVER / HAPPENING / HIGH RISK |
+  | Red | live: a warning sent to the driver | WARNING · SENT TO DRIVER |
   | Orange | a pit stop is called (BOX THIS LAP or BOX NOW) | PIT STOP CALLED |
   | Yellow | risk ≥ 10%, or raised over the last few corners | WATCH |
 
+  In live mode a strip above the boxes shows exactly what the driver's phone is showing ("📱 Driver sees: …").
+
 - **Tyre life:** safe laps left (90% confidence) and the likely laps to the cliff.
-- **Log:** every call change, event, scenario result and crash, with time stamps.
+- **Log:** every call change, event, driver alert, scenario result and crash, with time stamps.
 
 ## Replays: real races the models never saw
 | Replay | Real outcome | What the pit wall does |
@@ -123,7 +128,9 @@ the QR code falls back to the laptop's local-network address. `SIDEWALL_PUBLIC_U
 The live car runs on the Silverstone racing line from a real F1 lap, with a physics tyre model: 3 thermal nodes per
 tyre (tread surface, carcass, inflation gas), grip that depends on temperature, pressure, wear and downforce,
 pressure from the gas law, and the sensors a real car carries (infrared tread, TPMS, wheel speed, a hub accelerometer
-for flat-spot vibration). Physics runs at 20 Hz; the full monitoring stack analyses it every 0.5 s.
+for flat-spot vibration). Physics runs at 20 Hz; the full monitoring stack analyses it 4 times a second, starting as
+soon as each new 4 Hz data frame exists (about 140 ms per run, and the physics stays in real time). The autopilot keeps
+its throttle within the rear tyres' grip, so tidy driving has no wheelspin.
 
 1. Open `/pitwall?mode=live`, press **📱 Driver phone** and scan the QR code.
 2. On the phone, tap **Take the wheel**: brake on the left, throttle on the right; steering is automatic.
@@ -146,6 +153,24 @@ When a scenario ends, a watcher (`sidewall/sources/scenarios.py`) times the pit 
 own record of when the hazard happened, and the phone and the pit-wall log show, e.g., *"SIDEWALL warned 0.2 s before
 the overheating. It also warned 1 time on the approach."* The lead time is measured from the warning that runs into
 the hazard, so an earlier unrelated warning can't inflate it; a miss is reported as a miss.
+
+### Driver alerts
+The phone is warned directly from the next-second risk, as soon as each analysis finishes:
+
+| Level | Lock-up | Wheelspin | Phone shows |
+|---|---|---|---|
+| Warning (high chance: counteract) | risk ≥ 30% | risk ≥ 80% | amber "⚠ LOCK-UP RISK / Ease off the brake" (or throttle), short buzz |
+| Brace (imminent, or happening) | risk ≥ 50%, or a lock-up is detected | risk ≥ 95%, or wheelspin is detected | red, pulsing "‼ … IMMINENT / BRACE", red screen border, three long buzzes |
+
+Thresholds are per event, set on this simulator so tidy driving rarely triggers them; an alert stays up at least 1 s,
+and none are shown while the car is crashed (`ALERT_P` in `sidewall/sources/live.py`). Measured on the current build:
+in the lock-up scenario the driver is warned about 4 s before the lock-up (on the near-limit braking zone), and BRACE
+reaches the phone about 0.3 s after wheelspin starts and about 0.4 s after a lock-up starts. Over 150 s of tidy
+driving there are no wheelspin alerts and about 4 lock-up warnings.
+
+In held-out testing (section below) the models warn a median **0.5 s before a lock-up and 1.75 s before wheelspin**. The
+scenario scripts end in instantaneous inputs (stamping on the brakes, flooring it), which nothing can predict, so in the
+live demo the real early warning is the one on the approach.
 
 ### Crashes
 The car crashes and stops dead when it goes **off the track** (too fast for a corner, beyond the slide limit) or a
@@ -191,8 +216,10 @@ degraded to look like that. Accelerations rebuilt from position match the sim's 
    gearing** and **Tyre heat history**.
 2. **Stage 2: demand vs grip, per car.** A logistic regression adds driver demand and measured tyre condition (tread
    outside the 85–115 °C window, pressure off target). On the live simulator car, fronts 10 °C above the window multiply
-   lock-up odds ×14, hot rears multiply wheelspin odds ×3.2, and each psi of low rear pressure multiplies wheelspin odds
-   ×1.3 (lock-up ROC-AUC 0.62 → 0.78, calibration error 20% → 3%). On the Assetto Corsa data, tyre temperature adds
+   lock-up odds ×11, hot rears (10 °C over) multiply wheelspin odds ×5.7, and each psi of low rear pressure multiplies
+   wheelspin odds ×1.3 (lock-up ROC-AUC 0.62 → 0.78 and calibration error 20% → 3.5%; wheelspin 0.84 → 0.90 and
+   17% → 1.9%). Recalibrate with `python -m sidewall.models.risk --sim-only`, which leaves the Assetto Corsa models as
+   they are. On the Assetto Corsa data, tyre temperature adds
    almost nothing, and we report that as found.
 3. **Prevention.** The factor that dominated over the last few corners becomes an instruction, e.g. "More throttle
    than the rears can put down: short-shift out of slow corners". Sustained risk raises a MANAGE call.
@@ -218,6 +245,44 @@ scored 0.90 on training and 0.51 on test, because they identify individual races
 Result: the train–test gap fell from about 0.15 to 0.05 (cliff) and from about 0.35 to 0.09 (laps-to-cliff), with test
 accuracy the same or better.
 
+## Tech stack
+**Backend**
+- Python (3.11 minimum; developed on 3.12, `uv` targets 3.13), FastAPI, Uvicorn
+- WebSockets connect the pit wall, the driver phone and the crew phone
+- No database or login: live state is in memory, heavy work (replay rebuilds, feedback) runs on a small in-process job
+  queue (`sidewall/server/jobs.py`), and the feedback loop saves its state to a local JSON file
+- `qrcode` generates the QR codes that open the pages on phones
+- Optional Cloudflare quick tunnel (`cloudflared`) gives phones a public `https://` address
+
+**Frontend**
+- Plain HTML, CSS and JavaScript: no framework and no build step
+- Canvas 2D and SVG draw the track map, the car, the speedometer and the charts
+- Browser APIs: Vibration (driver alerts, crashes, lock-ups), Web Speech (the radio call read aloud), Wake Lock and
+  Fullscreen (driver phone), Pointer Events (the pedals)
+- Google Fonts: Inter and JetBrains Mono
+
+**Machine learning and data**
+- pandas, NumPy, SciPy (Savitzky–Golay smoothing of the racing line) and PyArrow (Parquet files)
+- LightGBM, with monotone constraints, quantile models and built-in TreeSHAP explanations, for tyre life and lock-up /
+  wheelspin risk
+- scikit-learn: logistic regression (per-car risk calibration) and race-grouped cross-validation
+- Conformal calibration for the safe-laps bound
+- joblib stores the trained models (`models/weights/`)
+- Physics models: the gas law for the virtual tyre-pressure sensor, a CUSUM leak detector, and a tyre and car
+  simulator
+
+**Data sources**
+- FastF1 / OpenF1: real F1 lap, tyre, weather and telemetry data (2018–2021 and 2024–2025)
+- Jolpica / Ergast: retirements, used as tyre-failure labels
+- Assetto Corsa Gym (Hugging Face): simulator data with per-wheel slip, used as ground truth
+- THULab Spa telemetry: an external car for testing the early warnings
+- Kaggle F1 tyre-strategy datasets
+
+**Tooling**
+- pytest for tests
+- `uv` for Python dependencies (`pyproject.toml`, `uv.lock`)
+- Git and GitHub
+
 ## Repository layout
 ```
 sidewall/                 the full-stack app
@@ -226,7 +291,7 @@ sidewall/                 the full-stack app
   server/feedback.py      runtime feedback loop (see below)
   server/jobs.py          background jobs (replay rebuilds, feedback)
   sources/sim.py          live simulator physics, sensors and crashes
-  sources/live.py         live session: 20 Hz physics loop, 0.5 s analysis loop, driver control
+  sources/live.py         live session: 20 Hz physics, 4 Hz analysis, driver control and alerts
   sources/scenarios.py    scenario-button scripts and the warning-lead watcher
   sources/replay.py       real-race replays and failure detection
   engine/monitor.py       runs every model on a stream and fuses them into frames
@@ -255,7 +320,7 @@ tests/, backend/tests/    test suites
 | `GET /api/metrics`, `GET /api/metric-plots`, `GET /api/atlas` | Model metrics, the Atlas plots and circuit data |
 | `POST /api/live/start`, `/stop`, `/reset`, `/debris` | Control the live simulator |
 | `GET /api/qr?path=/driver`, `GET /api/lan` | QR code and the address phones should open |
-| `WS /ws/pitwall`, `/ws/driver`, `/ws/crew` | Live state and analysed frames; phone controls (`claim`, `release`, `input`, `box`, `scenario`, `scenario_stop`) |
+| `WS /ws/pitwall`, `/ws/driver`, `/ws/crew` | Live state, analysed frames, `driver_alert`, `crash` and scenario results; phone controls (`claim`, `release`, `input`, `box`, `scenario`, `scenario_stop`) |
 
 Replay rebuilds go through `/api/jobs/replay`; `/api/replay/{key}?rebuild=true` is rejected so heavy work doesn't block
 requests.
@@ -299,7 +364,7 @@ uv run pytest -q
 
 ## Testing
 ```bash
-uv run pytest -q                  # everything (284 tests)
+uv run pytest -q                  # everything (287 tests)
 uv run pytest -q tests            # full app: detectors, sim physics, scenarios, crashes, server API, splits
 uv run pytest -q backend/tests    # lower-level backend
 ```
@@ -357,8 +422,13 @@ See `datasets/README.md` and the `datasets/FINDINGS_*.md` notes for what each so
 - There are few tyre failures in public data (60, 15 official), so the failure hazard is weak; the cliff model and the
   air-loss detector carry the safety calls.
 - In Baku 2021 the BOX call names the wrong tyre: the real cause (running pressure) is not visible in public data.
-- In the live simulator the wheelspin risk rests at about 20–35% during tidy driving, so it shows MANAGE more often
-  than it should.
+- In the live simulator the lock-up risk reads 10–30% during tidy driving that never locks up, so it gives about 4 false
+  lock-up warnings per 150 s. The overheating scenario's long corner also pushes both risks above 90% without a
+  lock-up or wheelspin.
+- On all of 2025, none of the 5 real tyre failures got a BOX call within 3 laps (`alert_rates_test` in
+  `tierB_metrics.json`).
+- In the live demo, BRACE reaches the phone about 0.3–0.4 s *after* a lock-up or wheelspin starts (4 Hz analysis plus
+  about 140 ms to run).
 - Scenario lock-ups and wheelspin come from instantaneous inputs (stamping, flooring it), so they are caught just after
   they start; the early warning is on the approach. During a scenario, the tyres follow the script's virtual straights
   and corners while the car on the map keeps going round the real circuit.
