@@ -52,6 +52,14 @@ class LiveSession:
         self.last_driver_msg = 0.0
         self.input_seq = 0
         self.latest_frame: dict | None = None
+        self.generation = getattr(self, "generation", 0) + 1   # lets an in-flight analysis see it is stale
+
+    def pit_stop(self):
+        """Fresh tyres (same as the pit wall's New tyres). A phone that was driving keeps the wheel."""
+        was_driving = self.driver_active
+        self.reset()
+        if was_driving:
+            self.claim()
 
     @property
     def track(self):
@@ -148,6 +156,7 @@ class LiveSession:
         self.lap_info = laps.iloc[-1].to_dict()
 
     async def _analyse(self):
+        gen = self.generation
         prev_laps = self.n_laps_seen
         self._update_laps()
         n = len(self.rows)
@@ -156,6 +165,8 @@ class LiveSession:
         stream = pd.DataFrame(self.rows[:n])
         measured = pd.DataFrame(self.measured[:n])
         frames = await asyncio.to_thread(self.monitor.frame_outputs, stream, None, measured, self.last_frame_t)
+        if gen != self.generation:                 # tyres changed while we were analysing the old set
+            return
         if frames is None or frames.empty:
             return
         frame = None

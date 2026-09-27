@@ -394,6 +394,7 @@ function connect() {
       drivers = msg.driver;
       $("dotDriver").className = `dot${msg.driver ? " live" : ""}`; $("dotCrew").className = `dot${msg.crew ? " live" : ""}`;
     } else if (msg.type === "notice") { toast(msg.text); logLine(liveState ? liveState.t : 0, msg.text, "#94a3b8"); }
+    else if (msg.type === "new_tyres") onNewTyres("🛞 Driver boxed: fresh tyres fitted");
     else if (msg.type === "crew_ack") toast("✔ Pit crew acknowledged the call");
   };
   ws.onclose = () => setTimeout(connect, 1500);
@@ -412,7 +413,8 @@ $("onboard").onclick = (e) => { if (e.target === e.currentTarget) closeOnboard()
 addEventListener("keydown", (e) => { if (e.key === "Escape") closeOnboard(); });
 $("tts").onclick = () => { ttsOn = !ttsOn; $("tts").classList.toggle("on", ttsOn); $("tts").textContent = ttsOn ? "🔊 Radio on" : "🔈 Radio off"; };
 $("debris").onclick = async () => { const r = await (await fetch("/api/live/debris", { method: "POST" })).json(); if (r.ok) { toast(`💥 ${WNAME[r.wheel].toLowerCase()} picked up a cut: watch the air-loss detector`); logLine(liveState ? liveState.t : 0, `💥 debris: ${WNAME[r.wheel].toLowerCase()} cut (what-if)`, "#ffc233"); } };
-$("newTyres").onclick = async () => { await fetch("/api/live/reset", { method: "POST" }); pins = []; lastLevel = -1; $("log").innerHTML = ""; toast("Fresh tyres fitted at blanket temperature (70°C)"); };
+function onNewTyres(text) { pins = []; lastLevel = -1; $("log").innerHTML = ""; toast(text); }
+$("newTyres").onclick = async () => { await fetch("/api/live/reset", { method: "POST" }); onNewTyres("Fresh tyres fitted at blanket temperature (70°C)"); };
 $("play").onclick = () => {
   if (!frames.length) return;
   if (idx >= frames.length - 1) seek(0);

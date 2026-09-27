@@ -356,7 +356,7 @@ async def ws_crew(ws: WebSocket):
 @app.websocket("/ws/driver")
 async def ws_driver(ws: WebSocket):
     """Phone controller. Messages: claim (take the wheel), release (hand back), input (pedals, with a sequence
-    number so late packets are dropped). Anything received counts as a heartbeat."""
+    number so late packets are dropped), box (pit stop: fresh tyres). Anything received counts as a heartbeat."""
     await hub.join("driver", ws)
     await _presence()
     try:
@@ -373,6 +373,9 @@ async def ws_driver(ws: WebSocket):
                 await hub.send("pitwall", {"type": "notice", "text": "Driver handed back to the autopilot."})
             elif kind == "input":
                 LIVE.set_input(msg.get("throttle", 0.0), msg.get("brake", 0.0), int(msg.get("seq", 0)))
+            elif kind == "box":
+                LIVE.pit_stop()
+                await hub.send("pitwall", {"type": "new_tyres", "by": "driver"})
     except WebSocketDisconnect:
         hub.leave("driver", ws)
         await _presence()

@@ -25,8 +25,19 @@
   /* Centre cluster: brake | speedometer | throttle, stacked (speedometer on top) on narrow screens. */
   .cluster { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: clamp(12px, 3vw, 28px);
     padding: 12px 16px calc(56px + env(safe-area-inset-bottom)); }
+  /* Centre column: BOX button (a third of the speedometer's width) above the speedometer. */
+  .centre { flex: none; width: min(360px, 42vw); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .boxbtn { width: 33.333%; height: clamp(32px, 9vh, 46px); border-radius: 12px; border: 2px solid var(--line);
+    background: var(--panel); color: var(--muted); font: 900 clamp(15px, 4.5vh, 20px) var(--sans); letter-spacing: .18em; white-space: nowrap; overflow: hidden;
+    padding: 0 0 0 .18em; cursor: pointer; touch-action: none; }
+  .boxbtn.call { animation: boxblink .8s steps(1) infinite; }
+  @keyframes boxblink {
+    0% { color: var(--box); border-color: var(--box); box-shadow: 0 0 14px rgba(255, 122, 26, .55); }
+    50% { color: #7a3a0c; border-color: #7a3a0c; box-shadow: none; }
+  }
+  .boxbtn.sent { color: var(--text); border-color: var(--text); animation: none; font-size: clamp(11px, 3vh, 14px); letter-spacing: .08em; }
   /* Speedometer: SVG gauge. Needle and arc follow the sim's speed; inner arcs show brake (left) and throttle (right). */
-  .speedo { flex: none; width: min(360px, 42vw); height: clamp(80px, 38vh, 200px);
+  .speedo { flex: none; width: 100%; height: clamp(80px, 38vh, 200px);
     border-radius: 16px; border: 2px solid var(--line);
     background: var(--panel); display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .speedo svg { width: 100%; height: 100%; display: block; }
@@ -48,7 +59,8 @@
     touch-action: none; }
   @media (max-aspect-ratio: 1/1) {
     .cluster { flex-wrap: wrap; align-content: center; }
-    .speedo { order: -1; width: 100%; max-width: 520px; height: clamp(80px, 28vh, 170px); }
+    .centre { order: -1; width: 100%; max-width: 520px; }
+    .speedo { height: clamp(80px, 28vh, 170px); }
     .pedal { height: clamp(90px, 24vh, 160px); width: clamp(110px, 38vw, 170px); }
   }
   .pedal .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; opacity: .9; }
@@ -80,6 +92,8 @@
     <div class="pedal" id="brake"><div class="fill"></div><div class="lbl">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5.5"/><path d="M5 5.5a9 9 0 0 0 0 13M19 5.5a9 9 0 0 1 0 13"/></svg>
       BRAKE<small id="brkv">0%</small></div></div>
+    <div class="centre">
+    <button class="boxbtn" id="box" type="button">BOX</button>
     <div class="speedo" id="speedo" role="img" aria-label="Speedometer">
       <svg viewBox="0 0 300 180">
         <path class="g-track" id="g-track"/>
@@ -93,6 +107,7 @@
         <text class="g-gear" id="g-gear" x="150" y="166">–</text>
       </svg>
     </div>
+    </div>
     <div class="pedal" id="throttle"><div class="fill"></div><div class="lbl">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="15" rx="2.5"/><path d="M10 6.5h4M10 10h4M10 13.5h4M12 17.5v3M8 21h8"/></svg>
       THROTTLE<small id="thrv">0%</small></div></div>
@@ -102,7 +117,8 @@
   <div class="gate" id="gate">
     <h1>SIDEWALL · Driver</h1>
     <p>You're the driver. Steering follows the racing line; you control the <b>brake</b> (left) and <b>throttle</b> (right).
-      Hold a button to press further; let go to release it. Brake too late or floor it out of slow corners and the pit wall will see it coming.</p>
+      Hold a button to press further; let go to release it. Brake too late or floor it out of slow corners and the pit wall will see it coming.
+      When the <b>BOX</b> button above the speedometer blinks, tap it for fresh tyres.</p>
     <button class="btn primary" id="claim" disabled>Connecting…</button>
     <div class="rot" id="rot">↻ Turn your phone sideways</div>
   </div>
@@ -124,6 +140,7 @@ function connect() {
     $("lap").textContent = m.lap; $("lapt").textContent = m.lap_time.toFixed(1);
     $("call").textContent = m.call === "OK" ? "OK" : m.call; $("call").style.color = LEVEL_COLOR[m.level || 0];
     if (m.advice) $("adv").textContent = m.advice;
+    $("box").classList.toggle("call", (m.level || 0) >= 2);        // BOX THIS LAP / BOX NOW
     if (m.mode !== "driver" && driving) { driving = false; showGate("The autopilot took over. Tap to drive again."); }
     const lock = m.truth && m.truth.lockup, spin = m.truth && m.truth.wheelspin;
     if ((lock || spin) && navigator.vibrate) navigator.vibrate(lock ? 90 : 45);
@@ -210,6 +227,18 @@ function bindPedal(id) {
   el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up); el.addEventListener("lostpointercapture", up);
 }
 bindPedal("brake"); bindPedal("throttle");
+
+// BOX: one tap fits fresh tyres (the server resets the stint; this phone keeps the wheel).
+let boxTimer = null;
+$("box").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (!driving) return;
+  send({ type: "box" });
+  navigator.vibrate?.(60);
+  const b = $("box"); b.textContent = "BOXING…"; b.classList.add("sent");
+  clearTimeout(boxTimer);
+  boxTimer = setTimeout(() => { b.textContent = "BOX"; b.classList.remove("sent"); }, 1500);
+});
 document.addEventListener("contextmenu", (e) => e.preventDefault());
 const orient = () => { $("rot").hidden = innerWidth > innerHeight; };
 addEventListener("resize", orient); orient();
