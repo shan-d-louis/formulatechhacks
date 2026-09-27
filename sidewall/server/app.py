@@ -1,4 +1,4 @@
-"""SIDEWALL server: pit-wall dashboard, crew phones, driver phone controller and the Ollon atlas.
+"""Lightning Response server: pit-wall dashboard, crew phones, driver phone controller and the Ollon atlas.
 
     python -m sidewall.server.app            # then open http://localhost:8000
 
@@ -36,7 +36,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 import laps as laps_model  # noqa: E402
 
-app = FastAPI(title="SIDEWALL")
+app = FastAPI(title="Lightning Response")
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 BUNDLES = load_bundles()
@@ -455,5 +455,5 @@ async def live_debris():
 PORT = 8000
 
 if __name__ == "__main__":
-    print(f"SIDEWALL on http://localhost:{PORT}  (phones: http://{lan_ip()}:{PORT})")
+    print(f"Lightning Response on http://localhost:{PORT}  (phones: http://{lan_ip()}:{PORT})")
     uvicorn.run(app, host="0.0.0.0", port=PORT)

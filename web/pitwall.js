@@ -1,4 +1,4 @@
-// SIDEWALL pit wall. Two modes share the same rendering:
+// Lightning Response pit wall. Two modes share the same rendering:
 //   replay: plays back pre-analysed frames of a real race (4 Hz), with a timeline and key moments
 //   live:   merges a fast car-state stream (10 Hz: position, pedals, tyre sensors) with analysed frames
 //           (2 Hz: risk, explanations, health, pit call) from the phone-driven simulator
